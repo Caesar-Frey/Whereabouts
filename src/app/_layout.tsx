@@ -20,6 +20,8 @@ import { fonts, usePalette } from '@/ui/theme';
 import { ToastProvider } from '@/ui/toast';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
+// The drawer fades into the reading room rather than snapping away.
+SplashScreen.setOptions({ fade: true, duration: 350 });
 
 export default function RootLayout() {
   const p = usePalette();
