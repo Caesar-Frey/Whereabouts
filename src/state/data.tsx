@@ -5,7 +5,7 @@ import { dumpCatalog, openArchive, restoreCatalog, sealArchive, type CatalogDump
 import { nativeAead, randomBytes, shareArchive } from '../backup/device';
 import { openEncryptedDatabase } from '../db/open';
 import { createRepo, type Repo } from '../db/repo';
-import type { Db, Item, Location } from '../db/types';
+import type { Db, Item, Location, PhotoInput } from '../db/types';
 import { buildLocationIndex, parsePathInput, type LocationIndex } from '../lib/locations';
 
 export interface Snapshot {
@@ -55,6 +55,7 @@ function makeActions(db: Db, repo: Repo, refresh: () => Promise<void>) {
         notes?: string;
         tags?: string[];
         lendTo?: { person: string; dueAt: number | null };
+        photos?: PhotoInput[];
       }) => repo.addItem({ ...input, placeNames: parsePathInput(input.place) }),
     ),
     updateItem: run(repo.updateItem),
@@ -65,6 +66,9 @@ function makeActions(db: Db, repo: Repo, refresh: () => Promise<void>) {
     undoMove: run(repo.undoMove),
     deleteItem: run(repo.deleteItem),
     restoreItem: run(repo.restoreItem),
+    addPhoto: run(repo.addPhoto),
+    deletePhoto: run(repo.deletePhoto),
+    getPhoto: repo.getPhoto,
     lendItem: run(repo.lendItem),
     returnItem: run(repo.returnItem),
     undoReturn: run(repo.undoReturn),

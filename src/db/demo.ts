@@ -1,3 +1,4 @@
+import { DEMO_STOVE } from './demoPhotos';
 import { createRepo } from './repo';
 import type { Db } from './types';
 
@@ -18,7 +19,7 @@ export async function seedDemo(db: Db): Promise<void> {
   await repo.addItem({ name: 'Christmas lights', locationId: attic, tags: ['seasonal'] });
   await repo.addItem({ name: 'Passport', locationId: desk, tags: ['documents', 'travel'], notes: 'Expires 2031' });
   const drill = await repo.addItem({ name: 'Cordless drill', locationId: shelf, tags: ['tools'] });
-  await repo.addItem({ name: 'Camping stove', locationId: blueBox, tags: ['camping'] });
+  await repo.addItem({ name: 'Camping stove', locationId: blueBox, tags: ['camping'], photos: [DEMO_STOVE] });
   await repo.addItem({ name: 'HDMI cable', locationId: blueBox });
   const ladder = await repo.addItem({ name: 'Step ladder', locationId: shelf, tags: ['tools'] });
   const book = await repo.addItem({ name: 'The Name of the Wind', locationId: null, tags: ['books'] });

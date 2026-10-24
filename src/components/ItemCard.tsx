@@ -1,9 +1,10 @@
 import { router } from 'expo-router';
 import { memo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 
 import type { Item } from '@/db/types';
 import { callNumber, dueState, shortDate } from '@/lib/format';
+import { jpegUri } from '@/photos/capture';
 import { useData } from '@/state/data';
 import { IndexCard, T } from '@/ui/components';
 import { usePalette } from '@/ui/theme';
@@ -34,16 +35,21 @@ export const ItemCard = memo(function ItemCard({ item, enterIndex }: { item: Ite
           </View>
         ) : null}
       </View>
-      <T variant="heading" numberOfLines={2} style={styles.title}>
+      {item.cover ? (
+        <View style={[styles.thumb, { borderColor: p.cardEdge, backgroundColor: p.cardEdge }]}>
+          <Image source={{ uri: jpegUri(item.cover) }} style={StyleSheet.absoluteFill} accessibilityIgnoresInvertColors />
+        </View>
+      ) : null}
+      <T variant="heading" numberOfLines={2} style={[styles.title, item.cover ? { marginRight: 64 } : null]}>
         {item.name}
       </T>
       {loan ? (
-        <T variant="typed" color={p.inkSoft} numberOfLines={1}>
+        <T variant="typed" color={p.inkSoft} numberOfLines={1} style={item.cover ? { marginRight: 64 } : null}>
           With {loan.person}
           {loan.dueAt ? ` · due ${shortDate(loan.dueAt)}` : ''}
         </T>
       ) : (
-        <T variant="typed" color={path.length ? p.inkSoft : p.inkFaint} numberOfLines={2}>
+        <T variant="typed" color={path.length ? p.inkSoft : p.inkFaint} numberOfLines={2} style={item.cover ? { marginRight: 64 } : null}>
           {path.length ? index.pathString(item.locationId) : 'Not shelved yet'}
         </T>
       )}
@@ -61,4 +67,5 @@ const styles = StyleSheet.create({
   callNo: { letterSpacing: 1.5, flexShrink: 1 },
   out: { borderWidth: 1.5, borderRadius: 3, paddingHorizontal: 6, paddingVertical: 1, transform: [{ rotate: '-4deg' }] },
   title: { marginBottom: 2 },
+  thumb: { position: 'absolute', right: 16, top: 44, width: 54, height: 54, borderWidth: 3, borderRadius: 2, overflow: 'hidden', transform: [{ rotate: '2deg' }] },
 });

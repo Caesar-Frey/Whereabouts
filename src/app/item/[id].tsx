@@ -4,11 +4,12 @@ import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { askForPhoto, PhotoPlate, useFullPhoto } from '@/components/PhotoPlate';
 import type { HistoryEvent } from '@/db/types';
 import { callNumber, dueState, relativeDays, shortDate, stampDate } from '@/lib/format';
 import { useData, useItem, useRecentPlaces } from '@/state/data';
 import { BrassPlate, IndexCard, LibraryButton, Room, SectionLabel, SpineChip, Stamp, T, TypedInput } from '@/ui/components';
-import { BinIcon, CheckedOutIcon, PencilIcon, ReshelveIcon, StampIcon } from '@/ui/icons';
+import { BinIcon, CameraIcon, CheckedOutIcon, PencilIcon, ReshelveIcon, StampIcon } from '@/ui/icons';
 import { fonts, usePalette } from '@/ui/theme';
 import { useToast } from '@/ui/toast';
 
@@ -23,6 +24,7 @@ export default function ItemScreen() {
   const [stamp, setStamp] = useState<{ text: string; sub?: string; color: string; key: number } | null>(null);
   const [editing, setEditing] = useState(false);
   const toast = useToast();
+  const cover = useFullPhoto(item?.photoIds[0]);
 
   useEffect(() => {
     if (!item) return;
@@ -44,6 +46,11 @@ export default function ItemScreen() {
 
   const path = index.pathNames(item.locationId);
   const loan = item.activeLoan;
+  const addPhoto = async () => {
+    const ph = await askForPhoto();
+    if (ph) await actions.addPhoto({ itemId: item.id }, ph).catch(showError);
+  };
+  const openPhoto = (photoId: string) => router.push({ pathname: '/photo/[id]', params: { id: photoId } });
   const due = loan ? dueState(loan.dueAt) : 'none';
   const moveTargets = recent
     .filter((l) => l.id !== item.locationId && !index.isWithin(item.locationId, l.id))
@@ -119,6 +126,23 @@ export default function ItemScreen() {
               />
             ) : (
               <>
+                {item.photoIds.length > 0 && (
+                  <View style={{ gap: 12, paddingVertical: 6 }}>
+                    <PhotoPlate
+                      base64={cover?.data ?? item.cover}
+                      aspect={cover?.aspect ?? 4 / 3}
+                      onPress={() => openPhoto(item.photoIds[0]!)}
+                      accessibilityLabel={`Photo of ${item.name}`}
+                    />
+                    {item.photoIds.length > 1 && (
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, padding: 4 }}>
+                        {item.photoIds.slice(1).map((pid, i) => (
+                          <Thumb key={pid} id={pid} tilt={i % 2 ? 1.5 : -1.5} onPress={() => openPhoto(pid)} />
+                        ))}
+                      </ScrollView>
+                    )}
+                  </View>
+                )}
                 <T variant="title">{item.name}</T>
                 {loan ? (
                   <View style={{ gap: 10 }}>
@@ -165,6 +189,12 @@ export default function ItemScreen() {
                   </View>
                 )}
                 {item.notes ? <T variant="italic">{item.notes}</T> : null}
+                <Pressable onPress={addPhoto} accessibilityRole="button" hitSlop={8} style={styles.addPhoto}>
+                  <CameraIcon size={16} color={p.leatherText} />
+                  <T variant="small" color={p.leatherText}>
+                    {item.photoIds.length ? 'Add another photo' : 'Add a photo'}
+                  </T>
+                </Pressable>
               </>
             )}
           </View>
@@ -227,6 +257,11 @@ export default function ItemScreen() {
 }
 
 const todayStamp = () => stampDate(Date.now());
+
+function Thumb({ id, tilt, onPress }: { id: string; tilt: number; onPress: () => void }) {
+  const photo = useFullPhoto(id);
+  return <PhotoPlate base64={photo?.data ?? null} aspect={1} style={{ width: 84 }} tilt={tilt} onPress={onPress} />;
+}
 
 const showError = (e: unknown) =>
   Alert.alert("That didn't save", e instanceof Error ? e.message : String(e));
@@ -308,6 +343,7 @@ const styles = StyleSheet.create({
   pathWrap: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' },
   pathPart: { flexDirection: 'row', alignItems: 'center' },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  addPhoto: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start' },
   row: { flexDirection: 'row', gap: 10 },
   slip: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 2, padding: 14 },
   slipRow: { flexDirection: 'row', gap: 12, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth },

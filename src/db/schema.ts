@@ -90,6 +90,16 @@ export const MIGRATIONS: string[] = [
     value TEXT NOT NULL
   );
   `,
+  // v2: photos are stored inside the encrypted database (JPEG as base64),
+  // with a small thumbnail for lists. `uri` is kept for the v1 constraint.
+  `
+  ALTER TABLE photos ADD COLUMN data TEXT;
+  ALTER TABLE photos ADD COLUMN thumb TEXT;
+  ALTER TABLE photos ADD COLUMN width INTEGER;
+  ALTER TABLE photos ADD COLUMN height INTEGER;
+  CREATE INDEX photos_item ON photos (item_id, created_at);
+  CREATE INDEX photos_location ON photos (location_id, created_at);
+  `,
 ];
 
 export async function migrate(db: Db): Promise<void> {

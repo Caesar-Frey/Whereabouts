@@ -1,5 +1,5 @@
 import { buildLocationIndex } from '../src/lib/locations';
-import { migrate } from '../src/db/schema';
+import { MIGRATIONS, migrate } from '../src/db/schema';
 import { testRepo } from './testDb';
 
 describe('schema', () => {
@@ -7,7 +7,7 @@ describe('schema', () => {
     const { db } = await testRepo();
     await migrate(db);
     const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
-    expect(row?.user_version).toBe(1);
+    expect(row?.user_version).toBe(MIGRATIONS.length);
   });
 });
 
@@ -233,5 +233,29 @@ describe('undo', () => {
     await repo.deleteLocation(a);
     await repo.restoreItem(snap!);
     expect((await repo.listItems())[0]!.locationId).toBeNull();
+  });
+});
+
+describe('photos', () => {
+  const photo = (n: number) => ({ data: `full${n}`, thumb: `thumb${n}`, width: 1600, height: 1200 });
+
+  it('stores photos with an item, uses the first as cover, and survives withdraw + undo', async () => {
+    const { repo } = await testRepo();
+    const id = await repo.addItem({ name: 'Tent', placeNames: ['Attic'], photos: [photo(1)] });
+    const second = await repo.addPhoto({ itemId: id }, photo(2));
+    let [item] = await repo.listItems();
+    expect(item!.photoIds).toHaveLength(2);
+    expect(item!.cover).toBe('thumb1');
+    expect((await repo.getPhoto(second))?.data).toBe('full2');
+
+    const snap = await repo.deleteItem(id);
+    expect(await repo.getPhoto(second)).toBeNull();
+    await repo.restoreItem(snap!);
+    [item] = await repo.listItems();
+    expect(item!.photoIds).toHaveLength(2);
+
+    await repo.deletePhoto(item!.photoIds[0]!);
+    [item] = await repo.listItems();
+    expect(item!.cover).toBe('thumb2');
   });
 });

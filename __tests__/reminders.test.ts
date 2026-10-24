@@ -14,6 +14,8 @@ function lent(name: string, dueAt: number | null, id = name): Item {
     createdAt: 0,
     updatedAt: 0,
     tags: [],
+    photoIds: [],
+    cover: null,
     activeLoan: { id: `loan-${id}`, itemId: id, person: 'Sam', lentAt: 0, dueAt, returnedAt: null, notes: null },
   };
 }

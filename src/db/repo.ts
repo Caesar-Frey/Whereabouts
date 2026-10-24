@@ -1,5 +1,5 @@
 import { buildLocationIndex, PATH_SEPARATOR } from '../lib/locations';
-import type { Db, HistoryEvent, Item, Loan, Location, SqlValue } from './types';
+import type { Db, HistoryEvent, Item, Loan, Location, Photo, PhotoInput, SqlValue } from './types';
 
 /** Everything needed to put a deleted item back. */
 export interface ItemSnapshot {
@@ -256,6 +256,7 @@ export function createRepo(db: Db, deps: RepoDeps) {
     notes?: string | null;
     tags?: string[];
     lendTo?: { person: string; dueAt?: number | null };
+    photos?: PhotoInput[];
   }): Promise<string> {
     const name = cleanName(input.name, 'Item');
     const notes = cleanNotes(input.notes);
@@ -281,8 +282,57 @@ export function createRepo(db: Db, deps: RepoDeps) {
       if (input.tags?.length) await setTags(id, input.tags);
       await touchLocation(locationId);
       if (person) await insertLoan(id, person, input.lendTo?.dueAt ?? null, null, t);
+      for (const photo of input.photos ?? []) await insertPhoto({ itemId: id }, photo, t);
     });
     return id;
+  }
+
+  async function insertPhoto(owner: { itemId?: string; locationId?: string }, photo: PhotoInput, t: number): Promise<string> {
+    const id = uuid();
+    await db.runAsync(
+      `INSERT INTO photos (id, item_id, location_id, uri, kind, created_at, data, thumb, width, height)
+       VALUES (?, ?, ?, 'inline', ?, ?, ?, ?, ?, ?)`,
+      [id, owner.itemId ?? null, owner.locationId ?? null, photo.kind ?? 'item', t, photo.data, photo.thumb, photo.width, photo.height],
+    );
+    return id;
+  }
+
+  async function addPhoto(owner: { itemId: string } | { locationId: string }, photo: PhotoInput): Promise<string> {
+    const t = now();
+    let id = '';
+    await db.withTransactionAsync(async () => {
+      id = await insertPhoto(owner, photo, t);
+      if ('itemId' in owner) await db.runAsync('UPDATE items SET updated_at = ? WHERE id = ?', [t, owner.itemId]);
+    });
+    return id;
+  }
+
+  async function getPhoto(id: string): Promise<Photo | null> {
+    const r = await db.getFirstAsync<{
+      id: string;
+      item_id: string | null;
+      location_id: string | null;
+      kind: Photo['kind'];
+      data: string | null;
+      width: number | null;
+      height: number | null;
+      created_at: number;
+    }>('SELECT id, item_id, location_id, kind, data, width, height, created_at FROM photos WHERE id = ?', [id]);
+    if (!r?.data) return null;
+    return {
+      id: r.id,
+      itemId: r.item_id,
+      locationId: r.location_id,
+      kind: r.kind,
+      data: r.data,
+      width: r.width,
+      height: r.height,
+      createdAt: r.created_at,
+    };
+  }
+
+  async function deletePhoto(id: string): Promise<void> {
+    await db.runAsync('DELETE FROM photos WHERE id = ?', [id]);
   }
 
   async function updateItem(
@@ -461,13 +511,22 @@ export function createRepo(db: Db, deps: RepoDeps) {
   }
 
   async function listItems(): Promise<Item[]> {
-    const [items, tags, loans] = await Promise.all([
+    const [items, tags, loans, photos] = await Promise.all([
       db.getAllAsync<ItemRow>('SELECT id, name, notes, location_id, created_at, updated_at FROM items'),
       db.getAllAsync<{ item_id: string; name: string }>(
         'SELECT it.item_id, t.name FROM item_tags it JOIN tags t ON t.id = it.tag_id ORDER BY t.name',
       ),
       db.getAllAsync<LoanRow>('SELECT * FROM loans WHERE returned_at IS NULL'),
+      db.getAllAsync<{ id: string; item_id: string; thumb: string | null }>(
+        'SELECT id, item_id, thumb FROM photos WHERE item_id IS NOT NULL ORDER BY created_at, id',
+      ),
     ]);
+    const photosByItem = new Map<string, { ids: string[]; cover: string | null }>();
+    for (const ph of photos) {
+      const entry = photosByItem.get(ph.item_id) ?? { ids: [], cover: ph.thumb };
+      entry.ids.push(ph.id);
+      photosByItem.set(ph.item_id, entry);
+    }
     const tagsByItem = new Map<string, string[]>();
     for (const t of tags) {
       const list = tagsByItem.get(t.item_id) ?? [];
@@ -484,6 +543,8 @@ export function createRepo(db: Db, deps: RepoDeps) {
       updatedAt: r.updated_at,
       tags: tagsByItem.get(r.id) ?? [],
       activeLoan: loanByItem.get(r.id) ?? null,
+      photoIds: photosByItem.get(r.id)?.ids ?? [],
+      cover: photosByItem.get(r.id)?.cover ?? null,
     }));
   }
 
@@ -550,6 +611,9 @@ export function createRepo(db: Db, deps: RepoDeps) {
     undoMove,
     deleteItem,
     restoreItem,
+    addPhoto,
+    getPhoto,
+    deletePhoto,
     lendItem,
     returnItem,
     undoReturn,

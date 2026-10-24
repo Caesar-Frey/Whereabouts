@@ -5,9 +5,12 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LoanFields, type LoanValue } from '@/components/LoanFields';
+import { askForPhoto, PhotoPlate } from '@/components/PhotoPlate';
 import { PlacePicker } from '@/components/PlacePicker';
+import type { CapturedPhoto } from '@/photos/capture';
 import { useData } from '@/state/data';
 import { IndexCard, LibraryButton, Room, Stamp, T, TypedInput } from '@/ui/components';
+import { CameraIcon, CloseIcon } from '@/ui/icons';
 import { usePalette } from '@/ui/theme';
 
 export default function AddScreen() {
@@ -25,6 +28,7 @@ export default function AddScreen() {
   const [more, setMore] = useState(false);
   const [tags, setTags] = useState('');
   const [notes, setNotes] = useState('');
+  const [photos, setPhotos] = useState<CapturedPhoto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<{ name: string; n: number } | null>(null);
@@ -45,6 +49,7 @@ export default function AddScreen() {
         notes,
         tags: tags.split(','),
         lendTo: lent ? { person: loan.person, dueAt: loan.dueAt } : undefined,
+        photos,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       if (another) {
@@ -52,6 +57,7 @@ export default function AddScreen() {
         setName('');
         setTags('');
         setNotes('');
+        setPhotos([]);
         nameRef.current?.focus();
       } else {
         router.back();
@@ -94,6 +100,37 @@ export default function AddScreen() {
                 onSubmitEditing={() => !lent && placeRef.current?.focus()}
                 accessibilityLabel="Name of the thing"
               />
+
+              <View style={styles.photoRow}>
+                {photos.map((ph, i) => (
+                  <View key={ph.uri}>
+                    <PhotoPlate base64={ph.thumb} aspect={1} style={{ width: 78 }} tilt={i % 2 ? 1.5 : -1.5} />
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Remove photo"
+                      hitSlop={8}
+                      onPress={() => setPhotos((list) => list.filter((x) => x !== ph))}
+                      style={[styles.removePhoto, { backgroundColor: p.leather }]}
+                    >
+                      <CloseIcon size={12} color={p.onLeather} />
+                    </Pressable>
+                  </View>
+                ))}
+                {photos.length < 4 && (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Add a photo"
+                    onPress={async () => {
+                      const ph = await askForPhoto();
+                      if (ph) setPhotos((list) => [...list, ph]);
+                    }}
+                    style={[styles.addPhoto, { borderColor: p.inkFaint }]}
+                  >
+                    <CameraIcon size={24} color={p.inkSoft} />
+                    <T variant="small">{photos.length ? 'Another' : 'Photo'}</T>
+                  </Pressable>
+                )}
+              </View>
 
               <View style={styles.toggleRow}>
                 <Toggle label="On a shelf" on={!lent} onPress={() => setLent(false)} />
@@ -180,5 +217,8 @@ function Toggle({ label, on, onPress }: { label: string; on: boolean; onPress: (
 const styles = StyleSheet.create({
   savedRow: { alignItems: 'center' },
   toggleRow: { flexDirection: 'row', gap: 8 },
+  photoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'center' },
+  addPhoto: { width: 78, height: 78, borderWidth: 1, borderStyle: 'dashed', borderRadius: 3, alignItems: 'center', justifyContent: 'center', gap: 2 },
+  removePhoto: { position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   toggle: { flex: 1, borderWidth: 1, borderRadius: 3, paddingVertical: 9, alignItems: 'center' },
 });

@@ -58,6 +58,14 @@
         {
           "color": "#B38B4D"
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Whereabouts uses the camera to photograph your things and boxes so you can recognise them later.",
+          "photosPermission": "Whereabouts lets you pick photos of your things.",
+          "microphonePermission": false
+        }
       ]
     ],
     "experiments": {

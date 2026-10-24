@@ -42,6 +42,29 @@ export interface Item {
   tags: string[];
   /** The loan that has not been returned yet, if the item is lent out. */
   activeLoan: Loan | null;
+  /** Photo ids, oldest first. The first is the cover. */
+  photoIds: string[];
+  /** Base64 JPEG thumbnail of the cover photo. */
+  cover: string | null;
+}
+
+export interface PhotoInput {
+  data: string;
+  thumb: string;
+  width: number;
+  height: number;
+  kind?: 'item' | 'box' | 'label';
+}
+
+export interface Photo {
+  id: string;
+  itemId: string | null;
+  locationId: string | null;
+  kind: 'item' | 'box' | 'label';
+  data: string;
+  width: number | null;
+  height: number | null;
+  createdAt: number;
 }
 
 export type HistoryEvent =

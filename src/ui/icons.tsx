@@ -198,3 +198,13 @@ export function BellIcon({ size = 24, color, accent, strokeWidth = 1.6 }: IconPr
     </Svg>
   );
 }
+
+/** A folding plate camera. */
+export function CameraIcon({ size = 24, color, accent, strokeWidth = 1.6 }: IconProps) {
+  return (
+    <Svg {...base(size)}>
+      <Path d="M3 8.5A1.5 1.5 0 0 1 4.5 7h3l1.5-2.5h6L16.5 7h3A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z" stroke={color} strokeWidth={strokeWidth} strokeLinejoin="round" />
+      <Circle cx={12} cy={13} r={3.6} stroke={color} strokeWidth={strokeWidth} fill={accent ?? 'none'} />
+    </Svg>
+  );
+}
