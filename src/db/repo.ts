@@ -1,5 +1,14 @@
 import { buildLocationIndex, PATH_SEPARATOR } from '../lib/locations';
-import type { Db, HistoryEvent, Item, Loan, Location } from './types';
+import type { Db, HistoryEvent, Item, Loan, Location, SqlValue } from './types';
+
+/** Everything needed to put a deleted item back. */
+export interface ItemSnapshot {
+  item: Record<string, SqlValue>;
+  tags: { name: string; source: string }[];
+  photos: Record<string, SqlValue>[];
+  loans: Record<string, SqlValue>[];
+  moves: Record<string, SqlValue>[];
+}
 
 export interface RepoDeps {
   now: () => number;
@@ -292,31 +301,104 @@ export function createRepo(db: Db, deps: RepoDeps) {
     });
   }
 
-  /** Records a move. Returns false when the item was already there. */
-  async function moveItem(id: string, toLocationId: string | null): Promise<boolean> {
+  /**
+   * Records a move. Returns the move's id (for undo), or null when the item
+   * was already there.
+   */
+  async function moveItem(id: string, toLocationId: string | null): Promise<string | null> {
     const item = await db.getFirstAsync<ItemRow>('SELECT * FROM items WHERE id = ?', [id]);
     if (!item) throw new Error('That item no longer exists');
-    if (item.location_id === toLocationId) return false;
+    if (item.location_id === toLocationId) return null;
     const index = buildLocationIndex(await listLocations());
     const fromPath = item.location_id && index.byId.has(item.location_id) ? index.pathString(item.location_id) : null;
     const toPath = toLocationId && index.byId.has(toLocationId) ? index.pathString(toLocationId) : null;
     const t = now();
+    const moveId = uuid();
     await db.withTransactionAsync(async () => {
       await db.runAsync('UPDATE items SET location_id = ?, updated_at = ? WHERE id = ?', [toLocationId, t, id]);
       await db.runAsync(
         `INSERT INTO moves (id, item_id, from_location_id, to_location_id, from_path, to_path, moved_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [uuid(), id, item.location_id, toLocationId, fromPath, toPath, t],
+        [moveId, id, item.location_id, toLocationId, fromPath, toPath, t],
       );
       await touchLocation(toLocationId);
     });
-    return true;
+    return moveId;
   }
 
-  async function deleteItem(id: string): Promise<void> {
+  /**
+   * Takes a move back: the item returns to where it was and the move leaves
+   * the history, as if it never happened. Does nothing if the item has moved
+   * again since.
+   */
+  async function undoMove(moveId: string): Promise<void> {
+    const move = await db.getFirstAsync<{ item_id: string; from_location_id: string | null; to_location_id: string | null }>(
+      'SELECT item_id, from_location_id, to_location_id FROM moves WHERE id = ?',
+      [moveId],
+    );
+    if (!move) return;
     await db.withTransactionAsync(async () => {
+      const from = move.from_location_id
+        ? ((await db.getFirstAsync<{ id: string }>('SELECT id FROM locations WHERE id = ?', [move.from_location_id]))?.id ?? null)
+        : null;
+      const { changes } = await db.runAsync(
+        'UPDATE items SET location_id = ?, updated_at = ? WHERE id = ? AND location_id IS ?',
+        [from, now(), move.item_id, move.to_location_id],
+      );
+      if (changes) await db.runAsync('DELETE FROM moves WHERE id = ?', [moveId]);
+    });
+  }
+
+  /**
+   * Deletes an item and everything hanging off it. Returns a snapshot that
+   * `restoreItem` can put back, for undo.
+   */
+  async function deleteItem(id: string): Promise<ItemSnapshot | null> {
+    let snapshot: ItemSnapshot | null = null;
+    await db.withTransactionAsync(async () => {
+      const item = await db.getFirstAsync<Record<string, SqlValue>>('SELECT * FROM items WHERE id = ?', [id]);
+      if (!item) return;
+      const [tags, photos, loans, moves] = await Promise.all([
+        db.getAllAsync<{ name: string; source: string }>(
+          'SELECT t.name, it.source FROM item_tags it JOIN tags t ON t.id = it.tag_id WHERE it.item_id = ?',
+          [id],
+        ),
+        db.getAllAsync<Record<string, SqlValue>>('SELECT * FROM photos WHERE item_id = ?', [id]),
+        db.getAllAsync<Record<string, SqlValue>>('SELECT * FROM loans WHERE item_id = ?', [id]),
+        db.getAllAsync<Record<string, SqlValue>>('SELECT * FROM moves WHERE item_id = ?', [id]),
+      ]);
+      snapshot = { item, tags, photos, loans, moves };
       await db.runAsync('DELETE FROM items WHERE id = ?', [id]);
       await db.runAsync('DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM item_tags)');
+    });
+    return snapshot;
+  }
+
+  async function insertRow(table: string, row: Record<string, SqlValue>): Promise<void> {
+    const cols = Object.keys(row);
+    await db.runAsync(`INSERT INTO ${table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`, cols.map((c) => row[c]!));
+  }
+
+  /** Puts back an item removed by `deleteItem`. */
+  async function restoreItem(snapshot: ItemSnapshot): Promise<void> {
+    await db.withTransactionAsync(async () => {
+      const item = { ...snapshot.item };
+      // Its place may have been removed in the meantime.
+      if (item.location_id && !(await db.getFirstAsync('SELECT id FROM locations WHERE id = ?', [item.location_id]))) {
+        item.location_id = null;
+      }
+      await insertRow('items', item);
+      for (const { name, source } of snapshot.tags) {
+        let row = await db.getFirstAsync<{ id: string }>('SELECT id FROM tags WHERE name = ? COLLATE NOCASE', [name]);
+        if (!row) {
+          row = { id: uuid() };
+          await db.runAsync('INSERT INTO tags (id, name) VALUES (?, ?)', [row.id, name]);
+        }
+        await db.runAsync('INSERT OR IGNORE INTO item_tags (item_id, tag_id, source) VALUES (?, ?, ?)', [item.id as string, row.id, source]);
+      }
+      for (const r of snapshot.photos) await insertRow('photos', r);
+      for (const r of snapshot.loans) await insertRow('loans', r);
+      for (const r of snapshot.moves) await insertRow('moves', r);
     });
   }
 
@@ -353,12 +435,25 @@ export function createRepo(db: Db, deps: RepoDeps) {
     return id;
   }
 
-  async function returnItem(itemId: string): Promise<void> {
+  /** Marks the active loan returned. Returns its id (for undo), or null if it wasn't lent. */
+  async function returnItem(itemId: string): Promise<string | null> {
     const t = now();
+    const active = await db.getFirstAsync<{ id: string }>('SELECT id FROM loans WHERE item_id = ? AND returned_at IS NULL', [itemId]);
+    if (!active) return null;
     await db.withTransactionAsync(async () => {
-      await db.runAsync('UPDATE loans SET returned_at = ? WHERE item_id = ? AND returned_at IS NULL', [t, itemId]);
+      await db.runAsync('UPDATE loans SET returned_at = ? WHERE id = ?', [t, active.id]);
       await db.runAsync('UPDATE items SET updated_at = ? WHERE id = ?', [t, itemId]);
     });
+    return active.id;
+  }
+
+  /** Re-opens a loan marked returned by mistake, unless the item was lent again since. */
+  async function undoReturn(loanId: string): Promise<void> {
+    await db.runAsync(
+      `UPDATE loans SET returned_at = NULL WHERE id = ? AND NOT EXISTS (
+         SELECT 1 FROM loans other WHERE other.item_id = loans.item_id AND other.returned_at IS NULL)`,
+      [loanId],
+    );
   }
 
   async function setLoanDue(loanId: string, dueAt: number | null): Promise<void> {
@@ -452,9 +547,12 @@ export function createRepo(db: Db, deps: RepoDeps) {
     addItem,
     updateItem,
     moveItem,
+    undoMove,
     deleteItem,
+    restoreItem,
     lendItem,
     returnItem,
+    undoReturn,
     setLoanDue,
     listItems,
     itemHistory,

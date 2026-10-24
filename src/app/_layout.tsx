@@ -15,6 +15,7 @@ import { DataGate } from '@/components/DataGate';
 import { LockGate } from '@/security/lock';
 import { DataProvider } from '@/state/data';
 import { fonts, usePalette } from '@/ui/theme';
+import { ToastProvider } from '@/ui/toast';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -49,6 +50,7 @@ export default function RootLayout() {
         <LockGate>
           <DataProvider>
             <DataGate>
+              <ToastProvider>
               <Stack
                 screenOptions={{
                   headerStyle: { backgroundColor: p.room },
@@ -66,7 +68,9 @@ export default function RootLayout() {
                 <Stack.Screen name="move/[id]" options={{ presentation: 'modal', title: 'Re-shelve' }} />
                 <Stack.Screen name="lend/[id]" options={{ presentation: 'modal', title: 'Check out' }} />
                 <Stack.Screen name="archive" options={{ presentation: 'modal', title: 'Backup' }} />
+                <Stack.Screen name="seal" options={{ presentation: 'modal', title: 'Seal the catalog' }} />
               </Stack>
+              </ToastProvider>
             </DataGate>
           </DataProvider>
         </LockGate>

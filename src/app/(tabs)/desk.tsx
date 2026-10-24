@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { canUseDeviceAuth, RELOCK_AFTER_MS, useAppLock } from '@/security/lock';
+import { canSealWithBiometrics, canUseDeviceAuth, RELOCK_AFTER_MS, useAppLock } from '@/security/lock';
 import { olderThan, relativeDays, shortDate } from '@/lib/format';
 import { LAST_BACKUP_KEY, useData } from '@/state/data';
 import { IndexCard, LibraryButton, Room, SectionLabel, T } from '@/ui/components';
@@ -18,10 +18,27 @@ export default function DeskScreen() {
   const lock = useAppLock();
   const [available, setAvailable] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
+  const [canSeal, setCanSeal] = useState(false);
 
   useEffect(() => {
     canUseDeviceAuth().then(setAvailable).catch(() => setAvailable(false));
+    canSealWithBiometrics().then(setCanSeal).catch(() => setCanSeal(false));
   }, []);
+
+  const toggleSeal = async (on: boolean) => {
+    if (on) {
+      router.push('/seal');
+      return;
+    }
+    setBusy(true);
+    try {
+      await lock.unseal();
+    } catch (e) {
+      Alert.alert("Couldn't unseal", e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const toggleLock = async (on: boolean) => {
     setBusy(true);
@@ -30,6 +47,8 @@ export default function DeskScreen() {
       if (!ok && on && !available) {
         Alert.alert('Set up a screen lock first', 'App lock uses your Face ID, fingerprint or device passcode.');
       }
+    } catch (e) {
+      Alert.alert("Couldn't change the lock", e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -72,6 +91,27 @@ export default function DeskScreen() {
               accessibilityLabel="App lock"
             />
           </View>
+          {lock.enabled && (canSeal || lock.sealed) && (
+            <View style={[styles.row, styles.subRow, { borderTopColor: p.rule }]}>
+              <View style={{ flex: 1, gap: 2 }}>
+                <T variant="body">Seal with Face ID or fingerprint</T>
+                <T variant="small">
+                  {lock.sealed
+                    ? 'The catalog key is released only by your face or fingerprint. A recovery passphrase is kept as a spare.'
+                    : 'Stronger: the key that decrypts your catalog needs your face or fingerprint.'}
+                </T>
+              </View>
+              <Switch
+                value={lock.sealed}
+                disabled={busy}
+                onValueChange={toggleSeal}
+                trackColor={{ true: p.lamp, false: p.cardEdge }}
+                thumbColor={p.scheme === 'dark' ? p.brassLight : '#FFFDF6'}
+                ios_backgroundColor={p.cardEdge}
+                accessibilityLabel="Seal with Face ID or fingerprint"
+              />
+            </View>
+          )}
         </IndexCard>
 
         <IndexCard punched={false} ruled={false} style={{ paddingBottom: 16 }}>
@@ -170,5 +210,6 @@ const styles = StyleSheet.create({
   badge: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
   stats: { flexDirection: 'row', gap: 10 },
   buttons: { flexDirection: 'row', gap: 10 },
+  subRow: { marginTop: 14, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth },
   stat: { flex: 1, alignItems: 'center', paddingVertical: 14, borderRadius: 4, borderWidth: StyleSheet.hairlineWidth },
 });

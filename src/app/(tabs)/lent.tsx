@@ -10,12 +10,14 @@ import { useData } from '@/state/data';
 import { IndexCard, LibraryButton, Room, Stamp, T } from '@/ui/components';
 import { PersonIcon } from '@/ui/icons';
 import { usePalette } from '@/ui/theme';
+import { useToast } from '@/ui/toast';
 
 /** Who has my stuff: active loans grouped by borrower, overdue first. */
 export default function LentScreen() {
   const p = usePalette();
   const insets = useSafeAreaInsets();
   const { items, actions } = useData();
+  const toast = useToast();
 
   const groups = useMemo(() => {
     const byPerson = new Map<string, { person: string; items: Item[] }>();
@@ -96,8 +98,9 @@ export default function LentScreen() {
                       accessibilityLabel={`${item.name} is back`}
                       onPress={async () => {
                         try {
-                          await actions.returnItem(item.id);
+                          const loanId = await actions.returnItem(item.id);
                           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+                          if (loanId) toast({ message: `“${item.name}” is back`, undo: () => actions.undoReturn(loanId) });
                         } catch (e) {
                           Alert.alert("That didn't save", e instanceof Error ? e.message : String(e));
                         }

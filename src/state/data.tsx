@@ -62,9 +62,12 @@ function makeActions(db: Db, repo: Repo, refresh: () => Promise<void>) {
       const locationId = typeof place === 'string' ? await placeFromPath(place) : place.locationId;
       return repo.moveItem(id, locationId);
     }),
+    undoMove: run(repo.undoMove),
     deleteItem: run(repo.deleteItem),
+    restoreItem: run(repo.restoreItem),
     lendItem: run(repo.lendItem),
     returnItem: run(repo.returnItem),
+    undoReturn: run(repo.undoReturn),
     setLoanDue: run(repo.setLoanDue),
     addPlace: run(async (path: string, parentId: string | null = null) =>
       repo.ensureLocationPath(parsePathInput(path), parentId),

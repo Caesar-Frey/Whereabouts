@@ -6,6 +6,7 @@ import { PlacePicker } from '@/components/PlacePicker';
 import { useData, useItem } from '@/state/data';
 import { LibraryButton, Room, T } from '@/ui/components';
 import { usePalette } from '@/ui/theme';
+import { useToast } from '@/ui/toast';
 
 export default function MoveScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -14,13 +15,15 @@ export default function MoveScreen() {
   const p = usePalette();
   const [place, setPlace] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   if (!item) return <Room>{null}</Room>;
 
   const move = async () => {
     try {
-      await actions.moveItem(item.id, place);
+      const moveId = await actions.moveItem(item.id, place);
       router.back();
+      if (moveId) toast({ message: `Moved “${item.name}”`, undo: () => actions.undoMove(moveId) });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }

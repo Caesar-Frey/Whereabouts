@@ -129,8 +129,8 @@ describe('items', () => {
     const a = await repo.ensureLocationPath(['Garage']);
     const b = await repo.ensureLocationPath(['Attic']);
     const id = await repo.addItem({ name: 'Tent', locationId: a });
-    expect(await repo.moveItem(id, b)).toBe(true);
-    expect(await repo.moveItem(id, b)).toBe(false);
+    expect(await repo.moveItem(id, b)).toEqual(expect.any(String));
+    expect(await repo.moveItem(id, b)).toBeNull();
     const history = await repo.itemHistory(id);
     expect(history.map((h) => h.kind === 'moved' && h.toPath)).toEqual(['Attic', 'Garage']);
   });
@@ -173,5 +173,65 @@ describe('settings', () => {
     await repo.setSetting('x', '1');
     await repo.setSetting('x', '2');
     expect(await repo.getSetting('x')).toBe('2');
+  });
+});
+
+describe('undo', () => {
+  it('takes a move back and drops it from the history', async () => {
+    const { repo } = await testRepo();
+    const a = await repo.ensureLocationPath(['A']);
+    const b = await repo.ensureLocationPath(['B']);
+    const id = await repo.addItem({ name: 'Drill', locationId: a });
+    const moveId = await repo.moveItem(id, b);
+    expect(await repo.moveItem(id, b)).toBeNull();
+    await repo.undoMove(moveId!);
+    expect((await repo.listItems())[0]!.locationId).toBe(a);
+    expect((await repo.itemHistory(id)).map((h) => h.kind)).toEqual(['moved']);
+  });
+
+  it("doesn't undo a move once the item has moved again", async () => {
+    const { repo } = await testRepo();
+    const [a, b, c] = [await repo.ensureLocationPath(['A']), await repo.ensureLocationPath(['B']), await repo.ensureLocationPath(['C'])];
+    const id = await repo.addItem({ name: 'Drill', locationId: a });
+    const first = await repo.moveItem(id, b);
+    await repo.moveItem(id, c);
+    await repo.undoMove(first!);
+    expect((await repo.listItems())[0]!.locationId).toBe(c);
+  });
+
+  it('re-opens a returned loan', async () => {
+    const { repo } = await testRepo();
+    const id = await repo.addItem({ name: 'Book', lendTo: { person: 'Sam', dueAt: 99 } });
+    const loanId = await repo.returnItem(id);
+    expect((await repo.listItems())[0]!.activeLoan).toBeNull();
+    await repo.undoReturn(loanId!);
+    expect((await repo.listItems())[0]!.activeLoan).toMatchObject({ person: 'Sam', dueAt: 99 });
+    expect(await repo.returnItem('nope')).toBeNull();
+  });
+
+  it('restores a withdrawn item with its tags, loans and history', async () => {
+    const { repo } = await testRepo();
+    const a = await repo.ensureLocationPath(['A']);
+    const b = await repo.ensureLocationPath(['B']);
+    const id = await repo.addItem({ name: 'Tent', locationId: a, tags: ['camping'], notes: 'green' });
+    await repo.moveItem(id, b);
+    await repo.lendItem(id, { person: 'Sam' });
+    const before = await repo.listItems();
+    const history = await repo.itemHistory(id);
+    const snap = await repo.deleteItem(id);
+    expect(await repo.listItems()).toEqual([]);
+    await repo.restoreItem(snap!);
+    expect(await repo.listItems()).toEqual(before);
+    expect(await repo.itemHistory(id)).toEqual(history);
+  });
+
+  it('restores an item as unshelved if its place is gone', async () => {
+    const { repo } = await testRepo();
+    const a = await repo.ensureLocationPath(['A']);
+    const id = await repo.addItem({ name: 'Tent', locationId: a });
+    const snap = await repo.deleteItem(id);
+    await repo.deleteLocation(a);
+    await repo.restoreItem(snap!);
+    expect((await repo.listItems())[0]!.locationId).toBeNull();
   });
 });

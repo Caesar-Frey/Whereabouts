@@ -10,6 +10,7 @@ import { useData, useItem, useRecentPlaces } from '@/state/data';
 import { BrassPlate, IndexCard, LibraryButton, Room, SectionLabel, SpineChip, Stamp, T, TypedInput } from '@/ui/components';
 import { BinIcon, CheckedOutIcon, PencilIcon, ReshelveIcon, StampIcon } from '@/ui/icons';
 import { fonts, usePalette } from '@/ui/theme';
+import { useToast } from '@/ui/toast';
 
 export default function ItemScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -21,6 +22,7 @@ export default function ItemScreen() {
   const [history, setHistory] = useState<HistoryEvent[]>([]);
   const [stamp, setStamp] = useState<{ text: string; sub?: string; color: string; key: number } | null>(null);
   const [editing, setEditing] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     if (!item) return;
@@ -51,7 +53,12 @@ export default function ItemScreen() {
 
   const moveTo = async (locationId: string) => {
     try {
-      if (await actions.moveItem(item.id, { locationId })) flash('Re-shelved', p.lampText, index.byId.get(locationId)?.name);
+      const moveId = await actions.moveItem(item.id, { locationId });
+      if (moveId) {
+        const name = index.byId.get(locationId)?.name;
+        flash('Re-shelved', p.lampText, name);
+        toast({ message: `Moved to ${name}`, undo: () => actions.undoMove(moveId).then(() => setStamp(null)) });
+      }
     } catch (e) {
       showError(e);
     }
@@ -59,26 +66,25 @@ export default function ItemScreen() {
 
   const markReturned = async () => {
     try {
-      await actions.returnItem(item.id);
+      const loanId = await actions.returnItem(item.id);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       flash('Returned', p.stampReturned, todayStamp());
+      if (loanId) toast({ message: `Back from ${loan?.person}`, undo: () => actions.undoReturn(loanId).then(() => setStamp(null)) });
     } catch (e) {
       showError(e);
     }
   };
 
-  const withdraw = () =>
-    Alert.alert('Withdraw this card?', `“${item.name}” and its history will be deleted.`, [
-      { text: 'Keep', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          router.back();
-          await actions.deleteItem(item.id).catch(showError);
-        },
-      },
-    ]);
+  // No "are you sure?": the card can be put back from the notice.
+  const withdraw = async () => {
+    router.back();
+    try {
+      const snapshot = await actions.deleteItem(item.id);
+      if (snapshot) toast({ message: `Withdrew “${item.name}”`, undo: () => actions.restoreItem(snapshot) });
+    } catch (e) {
+      showError(e);
+    }
+  };
 
   return (
     <Room>
