@@ -7,7 +7,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LoanFields, type LoanValue } from '@/components/LoanFields';
 import { askForPhoto, PhotoPlate } from '@/components/PhotoPlate';
 import { PlacePicker } from '@/components/PlacePicker';
+import { VoiceButton } from '@/components/VoiceButton';
+import { daysFromNow } from '@/lib/format';
+import { PATH_SEPARATOR } from '@/lib/locations';
 import type { CapturedPhoto } from '@/photos/capture';
+import { parseSpokenCard, resolveSpokenPlace } from '@/voice/parse';
+import { useDictation } from '@/voice/useDictation';
 import { useData } from '@/state/data';
 import { IndexCard, LibraryButton, Room, Stamp, T, TypedInput } from '@/ui/components';
 import { CameraIcon, CloseIcon } from '@/ui/icons';
@@ -17,7 +22,7 @@ export default function AddScreen() {
   const p = usePalette();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ name?: string; place?: string }>();
-  const { actions } = useData();
+  const { actions, locations, index, people, items } = useData();
   const nameRef = useRef<TextInputInstance>(null);
   const placeRef = useRef<TextInputInstance>(null);
 
@@ -32,6 +37,23 @@ export default function AddScreen() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<{ name: string; n: number } | null>(null);
+
+  const dictation = useDictation((text) => {
+    const card = parseSpokenCard(text);
+    if (card.name) setName(card.name);
+    if (card.person) {
+      setLent(true);
+      setLoan({ person: card.person, dueAt: card.dueInDays ? daysFromNow(card.dueInDays) : null });
+    } else if (card.place.length) {
+      setLent(false);
+      setPlace(resolveSpokenPlace(card.place, locations, index).join(PATH_SEPARATOR));
+    }
+  });
+  const listen = () => {
+    if (dictation.state === 'listening') return dictation.stop();
+    const hints = [...locations.map((l) => l.name), ...people, ...items.slice(0, 40).map((i) => i.name)];
+    dictation.start(hints);
+  };
 
   const canSave = name.trim().length > 0 && (!lent || loan.person.trim().length > 0) && !saving;
 
@@ -84,9 +106,19 @@ export default function AddScreen() {
 
           <IndexCard punched ruled={false}>
             <View style={{ gap: 22, paddingTop: 2 }}>
-              <T variant="label" color={p.headRule}>
-                New catalog card
-              </T>
+              <View style={styles.headRow}>
+                <T variant="label" color={p.headRule}>
+                  New catalog card
+                </T>
+                <VoiceButton listening={dictation.state === 'listening'} onPress={listen} size={38} />
+              </View>
+              {(dictation.state === 'listening' || dictation.transcript) && (
+                <T variant="italic" color={p.inkSoft} accessibilityLiveRegion="polite">
+                  {dictation.transcript
+                    ? `“${dictation.transcript}”`
+                    : 'Listening… try “the passport is in the desk drawer” or “I lent the drill to Sam”.'}
+                </T>
+              )}
               <TypedInput
                 ref={nameRef}
                 big
@@ -217,6 +249,7 @@ function Toggle({ label, on, onPress }: { label: string; on: boolean; onPress: (
 const styles = StyleSheet.create({
   savedRow: { alignItems: 'center' },
   toggleRow: { flexDirection: 'row', gap: 8 },
+  headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: -8 },
   photoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'center' },
   addPhoto: { width: 78, height: 78, borderWidth: 1, borderStyle: 'dashed', borderRadius: 3, alignItems: 'center', justifyContent: 'center', gap: 2 },
   removePhoto: { position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },

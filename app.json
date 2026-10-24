@@ -66,6 +66,17 @@
           "photosPermission": "Whereabouts lets you pick photos of your things.",
           "microphonePermission": false
         }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Whereabouts listens when you tap the microphone, so you can add or find things by voice. Audio never leaves your phone.",
+          "speechRecognitionPermission": "Whereabouts turns what you say into a catalog card, on your phone.",
+          "androidSpeechServicePackages": [
+            "com.google.android.as",
+            "com.google.android.googlequicksearchbox"
+          ]
+        }
       ]
     ],
     "experiments": {

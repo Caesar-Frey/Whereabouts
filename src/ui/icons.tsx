@@ -208,3 +208,15 @@ export function CameraIcon({ size = 24, color, accent, strokeWidth = 1.6 }: Icon
     </Svg>
   );
 }
+
+/** An old broadcast microphone: grilled capsule in a yoke on a short stand. */
+export function MicrophoneIcon({ size = 24, color, strokeWidth = 1.7 }: IconProps) {
+  return (
+    <Svg {...base(size)}>
+      <Rect x={8.5} y={2.5} width={7} height={11} rx={3.5} stroke={color} strokeWidth={strokeWidth} />
+      <Path d="M8.5 6.5h2.5M8.5 9.5h2.5M13 6.5h2.5M13 9.5h2.5" stroke={color} strokeWidth={strokeWidth * 0.8} strokeLinecap="round" />
+      <Path d="M5.5 10.5a6.5 6.5 0 0 0 13 0" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+      <Path d="M12 17v3.5M8.5 21h7" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+    </Svg>
+  );
+}

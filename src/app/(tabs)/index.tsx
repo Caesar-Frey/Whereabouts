@@ -4,12 +4,15 @@ import { FlatList, Keyboard, Pressable, ScrollView, StyleSheet, TextInput, View,
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ItemCard } from '@/components/ItemCard';
+import { VoiceButton } from '@/components/VoiceButton';
 import type { Item, Location } from '@/db/types';
 import { buildCatalog } from '@/search/catalog';
 import { useData } from '@/state/data';
 import { LibraryButton, Room, SectionLabel, SpineChip, Stamp, T } from '@/ui/components';
 import { CloseIcon, LoupeIcon } from '@/ui/icons';
 import { fonts, usePalette } from '@/ui/theme';
+import { spokenQuery } from '@/voice/parse';
+import { useDictation } from '@/voice/useDictation';
 
 export default function CatalogScreen() {
   const p = usePalette();
@@ -18,6 +21,8 @@ export default function CatalogScreen() {
   const [query, setQuery] = useState('');
   const deferred = useDeferredValue(query);
   const input = useRef<TextInputInstance>(null);
+  const dictation = useDictation((text) => setQuery(spokenQuery(text)));
+  const listening = dictation.state === 'listening';
 
   const catalog = useMemo(() => buildCatalog(items, locations, index), [items, locations, index]);
   const { things, places } = useMemo(() => {
@@ -59,7 +64,7 @@ export default function CatalogScreen() {
                 value={query}
                 onChangeText={setQuery}
                 autoFocus={items.length > 0}
-                placeholder="What are you looking for?"
+                placeholder={listening ? 'Listening…' : 'What are you looking for?'}
                 placeholderTextColor={p.inkFaint}
                 selectionColor={p.leather}
                 cursorColor={p.leather}
@@ -81,7 +86,14 @@ export default function CatalogScreen() {
                 >
                   <CloseIcon size={18} color={p.inkSoft} />
                 </Pressable>
-              ) : null}
+              ) : (
+                <VoiceButton
+                  size={34}
+                  listening={listening}
+                  accessibilityLabel="Ask out loud, like “where's my passport”"
+                  onPress={() => (listening ? dictation.stop() : dictation.start(items.slice(0, 100).map((i) => i.name)))}
+                />
+              )}
             </View>
             {places.length > 0 && (
               <View style={{ gap: 6 }}>
