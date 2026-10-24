@@ -259,8 +259,7 @@ export default function ItemScreen() {
 const todayStamp = () => stampDate(Date.now());
 
 function Thumb({ id, tilt, onPress }: { id: string; tilt: number; onPress: () => void }) {
-  const photo = useFullPhoto(id);
-  return <PhotoPlate base64={photo?.data ?? null} aspect={1} style={{ width: 84 }} tilt={tilt} onPress={onPress} />;
+  return <PhotoPlate base64={null} photoId={id} aspect={1} style={{ width: 84 }} tilt={tilt} onPress={onPress} />;
 }
 
 const showError = (e: unknown) =>

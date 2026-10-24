@@ -1,11 +1,13 @@
 import { useMemo, type Ref } from 'react';
-import { Pressable, ScrollView, StyleSheet, View, type TextInputInstance } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View, type TextInputInstance } from 'react-native';
 
 import { parsePathInput, PATH_SEPARATOR } from '@/lib/locations';
 import { createSearchIndex } from '@/search/fuzzy';
 import { useData, useRecentPlaces } from '@/state/data';
 import { SpineChip, T, TypedInput } from '@/ui/components';
-import { PigeonholeIcon } from '@/ui/icons';
+import { CameraIcon, PigeonholeIcon } from '@/ui/icons';
+
+import { scanBox, useBoxMatcher } from './BoxScanner';
 import { usePalette } from '@/ui/theme';
 
 /**
@@ -30,6 +32,27 @@ export function PlacePicker({
   const p = usePalette();
   const { locations, index } = useData();
   const recent = useRecentPlaces(10);
+  const { hasBoxes, match } = useBoxMatcher();
+
+  /** Picks the place by photographing the box it's going into. */
+  const scanForPlace = async () => {
+    const scan = await scanBox('Photograph the box it goes in');
+    if (!scan) return;
+    const ranked = match(scan.view).filter((r) => r.strength !== 'weak' && index.byId.has(r.value));
+    const top = ranked[0];
+    if (!top) {
+      Alert.alert('No box matched', 'Type the place instead. You can fingerprint a box from its shelf page.');
+      return;
+    }
+    if (top.strength === 'strong') {
+      onChange(index.pathString(top.value));
+      return;
+    }
+    Alert.alert('Which box?', undefined, [
+      ...ranked.slice(0, 2).map((r) => ({ text: index.pathString(r.value), onPress: () => onChange(index.pathString(r.value)) })),
+      { text: 'Neither', style: 'cancel' as const },
+    ]);
+  };
 
   const placeIndex = useMemo(
     () =>
@@ -87,6 +110,15 @@ export function PlacePicker({
         onSubmitEditing={onSubmit}
         accessibilityHint="Separate nested places with a greater-than sign"
       />
+
+      {hasBoxes && (
+        <Pressable accessibilityRole="button" onPress={scanForPlace} hitSlop={8} style={styles.scan}>
+          <CameraIcon size={16} color={p.leatherText} />
+          <T variant="small" color={p.leatherText}>
+            Scan the box it goes in
+          </T>
+        </Pressable>
+      )}
 
       {names.length > 0 && (
         <View style={styles.pathRow}>
@@ -158,6 +190,7 @@ export function PlacePicker({
 }
 
 const styles = StyleSheet.create({
+  scan: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start' },
   pathRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 2 },
   pathPart: { flexDirection: 'row', alignItems: 'center' },
   inside: { marginLeft: 8, borderWidth: 1, borderStyle: 'dashed', borderRadius: 3, paddingHorizontal: 6, paddingVertical: 1 },

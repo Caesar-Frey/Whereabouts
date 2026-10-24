@@ -17,14 +17,14 @@ import { useDictation } from '@/voice/useDictation';
 export default function CatalogScreen() {
   const p = usePalette();
   const insets = useSafeAreaInsets();
-  const { items, locations, index } = useData();
+  const { items, locations, index, boxes } = useData();
   const [query, setQuery] = useState('');
   const deferred = useDeferredValue(query);
   const input = useRef<TextInputInstance>(null);
   const dictation = useDictation((text) => setQuery(spokenQuery(text)));
   const listening = dictation.state === 'listening';
 
-  const catalog = useMemo(() => buildCatalog(items, locations, index), [items, locations, index]);
+  const catalog = useMemo(() => buildCatalog(items, locations, index, boxes), [items, locations, index, boxes]);
   const { things, places } = useMemo(() => {
     if (!deferred.trim()) {
       return { things: [...items].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 40), places: [] as Location[] };

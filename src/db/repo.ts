@@ -1,5 +1,5 @@
 import { buildLocationIndex, PATH_SEPARATOR } from '../lib/locations';
-import type { Db, HistoryEvent, Item, Loan, Location, Photo, PhotoInput, SqlValue } from './types';
+import type { BoxInfo, Db, HistoryEvent, Item, Loan, Location, Photo, PhotoInput, SqlValue } from './types';
 
 /** Everything needed to put a deleted item back. */
 export interface ItemSnapshot {
@@ -593,6 +593,43 @@ export function createRepo(db: Db, deps: RepoDeps) {
     );
   }
 
+  /** Places with a fingerprint or photos of their own. */
+  async function listBoxes(): Promise<BoxInfo[]> {
+    const [fps, photos] = await Promise.all([
+      db.getAllAsync<{ id: string; fingerprint: Uint8Array | null }>(
+        'SELECT id, fingerprint FROM locations WHERE fingerprint IS NOT NULL',
+      ),
+      db.getAllAsync<{ id: string; location_id: string; thumb: string | null }>(
+        'SELECT id, location_id, thumb FROM photos WHERE location_id IS NOT NULL ORDER BY created_at, id',
+      ),
+    ]);
+    const boxes = new Map<string, BoxInfo>();
+    const get = (id: string) => {
+      let b = boxes.get(id);
+      if (!b) boxes.set(id, (b = { locationId: id, fingerprint: null, photoIds: [], cover: null }));
+      return b;
+    };
+    for (const r of fps) get(r.id).fingerprint = r.fingerprint instanceof Uint8Array ? r.fingerprint : new Uint8Array(r.fingerprint ?? []);
+    for (const ph of photos) {
+      const b = get(ph.location_id);
+      if (!b.cover) b.cover = ph.thumb;
+      b.photoIds.push(ph.id);
+    }
+    return [...boxes.values()];
+  }
+
+  async function setFingerprint(locationId: string, fingerprint: Uint8Array | null, model: string | null): Promise<void> {
+    await db.runAsync('UPDATE locations SET fingerprint = ?, fingerprint_model = ? WHERE id = ?', [fingerprint, model, locationId]);
+  }
+
+  /** Forgets how to recognise a place: its fingerprint and its own photos. */
+  async function clearBox(locationId: string): Promise<void> {
+    await db.withTransactionAsync(async () => {
+      await db.runAsync('UPDATE locations SET fingerprint = NULL, fingerprint_model = NULL WHERE id = ?', [locationId]);
+      await db.runAsync('DELETE FROM photos WHERE location_id = ?', [locationId]);
+    });
+  }
+
   async function allSettings(): Promise<Record<string, string>> {
     const rows = await db.getAllAsync<{ key: string; value: string }>('SELECT key, value FROM settings');
     return Object.fromEntries(rows.map((r) => [r.key, r.value]));
@@ -600,6 +637,9 @@ export function createRepo(db: Db, deps: RepoDeps) {
 
   return {
     allSettings,
+    listBoxes,
+    setFingerprint,
+    clearBox,
     listLocations,
     ensureLocationPath,
     renameLocation,

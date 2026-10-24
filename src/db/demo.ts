@@ -1,4 +1,5 @@
-import { DEMO_STOVE } from './demoPhotos';
+import { addView, encodeFingerprint, FINGERPRINT_MODEL } from '../boxes/fingerprint';
+import { DEMO_BOX, DEMO_STOVE } from './demoPhotos';
 import { createRepo } from './repo';
 import type { Db } from './types';
 
@@ -27,6 +28,10 @@ export async function seedDemo(db: Db): Promise<void> {
   await repo.addItem({ name: 'Gym bag', locationId: office });
   await repo.moveItem(drill, blueBox);
   await repo.moveItem(drill, shelf);
+
+  const fp = addView(null, { words: ['camping'], text: 'CAMPING', hist: [], grid: [] });
+  await repo.setFingerprint(blueBox, encodeFingerprint(fp), FINGERPRINT_MODEL);
+  await repo.addPhoto({ locationId: blueBox }, { ...DEMO_BOX, kind: 'label' });
 
   await repo.lendItem(ladder, { person: 'Sam', dueAt: Date.now() - 2 * DAY });
   await repo.lendItem(book, { person: 'Priya', dueAt: Date.now() + 9 * DAY });

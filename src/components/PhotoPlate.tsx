@@ -11,6 +11,7 @@ import { usePalette } from '@/ui/theme';
  */
 export function PhotoPlate({
   base64,
+  photoId,
   aspect = 4 / 3,
   onPress,
   accessibilityLabel,
@@ -18,6 +19,8 @@ export function PhotoPlate({
   tilt = -1.2,
 }: {
   base64: string | null;
+  /** Load this stored photo (full size) instead of, or on top of, `base64`. */
+  photoId?: string;
   aspect?: number;
   onPress?: () => void;
   accessibilityLabel?: string;
@@ -25,10 +28,12 @@ export function PhotoPlate({
   tilt?: number;
 }) {
   const p = usePalette();
+  const full = useFullPhoto(photoId);
+  const shown = full?.data ?? base64;
   const body = (
     <View style={[styles.plate, { backgroundColor: p.scheme === 'dark' ? '#E9DFCB' : '#FFFDF7', shadowColor: p.shadow, transform: [{ rotate: `${tilt}deg` }] }, style]}>
       <View style={{ aspectRatio: aspect, backgroundColor: p.cardEdge }}>
-        {base64 ? <Image source={{ uri: jpegUri(base64) }} style={StyleSheet.absoluteFill} resizeMode="cover" /> : null}
+        {shown ? <Image source={{ uri: jpegUri(shown) }} style={StyleSheet.absoluteFill} resizeMode="cover" /> : null}
       </View>
       {CORNERS.map((c) => (
         <View key={c} style={[styles.corner, cornerStyle[c]]} />

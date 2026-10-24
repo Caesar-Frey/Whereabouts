@@ -1,11 +1,12 @@
 import * as Crypto from 'expo-crypto';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
+import { addView, decodeFingerprint, encodeFingerprint, FINGERPRINT_MODEL, type Fingerprint, type FingerprintView } from '../boxes/fingerprint';
 import { dumpCatalog, openArchive, restoreCatalog, sealArchive, type CatalogDump } from '../backup/archive';
 import { nativeAead, randomBytes, shareArchive } from '../backup/device';
 import { openEncryptedDatabase } from '../db/open';
 import { createRepo, type Repo } from '../db/repo';
-import type { Db, Item, Location, PhotoInput } from '../db/types';
+import type { BoxInfo, Db, Item, Location, PhotoInput } from '../db/types';
 import { buildLocationIndex, parsePathInput, type LocationIndex } from '../lib/locations';
 
 export interface Snapshot {
@@ -14,6 +15,12 @@ export interface Snapshot {
   index: LocationIndex;
   people: string[];
   settings: Record<string, string>;
+  /** Places with photos or a fingerprint, by location id. */
+  boxes: Map<string, Box>;
+}
+
+export interface Box extends BoxInfo {
+  fp: Fingerprint | null;
 }
 
 type Status = { state: 'loading' } | { state: 'error'; error: Error } | { state: 'ready' };
@@ -25,7 +32,7 @@ interface DataContextValue {
   retry: () => void;
 }
 
-const EMPTY: Snapshot = { items: [], locations: [], index: buildLocationIndex([]), people: [], settings: {} };
+const EMPTY: Snapshot = { items: [], locations: [], index: buildLocationIndex([]), people: [], settings: {}, boxes: new Map() };
 
 /** When this phone last made a backup. A device setting, so a restore doesn't overwrite it. */
 export const LAST_BACKUP_KEY = 'device.lastBackupAt';
@@ -95,19 +102,30 @@ function makeActions(db: Db, repo: Repo, refresh: () => Promise<void>) {
       openArchive(bytes, passphrase, { aead: nativeAead, randomBytes, onProgress }),
     /** Replaces everything with the archived catalog. */
     restoreArchive: run((dump: CatalogDump) => restoreCatalog(db, dump)),
+
+    /** Adds a photo of a box (and what was read from it) to its fingerprint. */
+    addBoxView: run(async (locationId: string, view: FingerprintView, photo: PhotoInput) => {
+      const current = (await repo.listBoxes()).find((b) => b.locationId === locationId);
+      const fp = addView(decodeFingerprint(current?.fingerprint ?? null), view);
+      await repo.setFingerprint(locationId, encodeFingerprint(fp), FINGERPRINT_MODEL);
+      await repo.addPhoto({ locationId }, { ...photo, kind: view.words.length ? 'label' : 'box' });
+    }),
+    clearBox: run(repo.clearBox),
   };
 }
 
 export type Actions = ReturnType<typeof makeActions>;
 
 async function loadSnapshot(repo: Repo): Promise<Snapshot> {
-  const [items, locations, people, settings] = await Promise.all([
+  const [items, locations, people, settings, boxList] = await Promise.all([
     repo.listItems(),
     repo.listLocations(),
     repo.knownPeople(),
     repo.allSettings(),
+    repo.listBoxes(),
   ]);
-  return { items, locations, index: buildLocationIndex(locations), people, settings };
+  const boxes = new Map(boxList.map((b) => [b.locationId, { ...b, fp: decodeFingerprint(b.fingerprint) }]));
+  return { items, locations, index: buildLocationIndex(locations), people, settings, boxes };
 }
 
 export function DataProvider({ children }: { children: ReactNode }) {

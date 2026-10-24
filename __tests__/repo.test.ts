@@ -259,3 +259,17 @@ describe('photos', () => {
     expect(item!.cover).toBe('thumb2');
   });
 });
+
+describe('boxes', () => {
+  it('keeps fingerprints and box photos per place, and forgets them together', async () => {
+    const { repo } = await testRepo();
+    const box = await repo.ensureLocationPath(['Garage', 'Blue box']);
+    await repo.setFingerprint(box, new Uint8Array([1, 2, 3]), 'wb-fp-1');
+    await repo.addPhoto({ locationId: box }, { data: 'd', thumb: 't', width: 1, height: 1, kind: 'box' });
+    const [info] = await repo.listBoxes();
+    expect(info).toMatchObject({ locationId: box, cover: 't' });
+    expect([...info!.fingerprint!]).toEqual([1, 2, 3]);
+    await repo.clearBox(box);
+    expect(await repo.listBoxes()).toEqual([]);
+  });
+});

@@ -3,10 +3,11 @@ import { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useBoxMatcher } from '@/components/BoxScanner';
 import { ItemCard } from '@/components/ItemCard';
 import { useData } from '@/state/data';
 import { IndexCard, LibraryButton, Room, SectionLabel, spineColor, Stamp, T, TypedInput } from '@/ui/components';
-import { ChevronIcon } from '@/ui/icons';
+import { CameraIcon, ChevronIcon } from '@/ui/icons';
 import { usePalette } from '@/ui/theme';
 
 /** Browse the places tree from the top: rooms, then what's inside them. */
@@ -17,6 +18,7 @@ export default function ShelvesScreen() {
   const [adding, setAdding] = useState(false);
   const [newPath, setNewPath] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const { hasBoxes } = useBoxMatcher();
 
   const roots = useMemo(() => index.children.get(null) ?? [], [index]);
   const counts = useMemo(() => {
@@ -49,6 +51,15 @@ export default function ShelvesScreen() {
           </T>
           <T variant="title">Shelves</T>
         </View>
+
+        {hasBoxes && (
+          <LibraryButton
+            tone="lamp"
+            label="Which box is this?"
+            icon={(c) => <CameraIcon size={20} color={c} />}
+            onPress={() => router.push('/identify')}
+          />
+        )}
 
         {roots.length === 0 && !adding && (
           <View style={styles.empty}>

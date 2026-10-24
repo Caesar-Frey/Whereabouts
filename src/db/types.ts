@@ -77,3 +77,12 @@ export type HistoryEvent =
     }
   | { kind: 'lent'; id: string; at: number; person: string; dueAt: number | null }
   | { kind: 'returned'; id: string; at: number; person: string };
+
+/** A place that can be recognised from a photo of it (a box, a bag, a drawer...). */
+export interface BoxInfo {
+  locationId: string;
+  /** Raw fingerprint JSON; decode with decodeFingerprint. */
+  fingerprint: Uint8Array | null;
+  photoIds: string[];
+  cover: string | null;
+}
