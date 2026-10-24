@@ -63,6 +63,7 @@ function makeActions(db: Db, repo: Repo, refresh: () => Promise<void>) {
         tags?: string[];
         lendTo?: { person: string; dueAt: number | null };
         photos?: PhotoInput[];
+        aiTags?: string[];
       }) => repo.addItem({ ...input, placeNames: parsePathInput(input.place) }),
     ),
     updateItem: run(repo.updateItem),
@@ -111,6 +112,11 @@ function makeActions(db: Db, repo: Repo, refresh: () => Promise<void>) {
       await repo.addPhoto({ locationId }, { ...photo, kind: view.words.length ? 'label' : 'box' });
     }),
     clearBox: run(repo.clearBox),
+
+    // Embeddings change nothing visible, so they don't refresh the snapshot.
+    listEmbeddings: repo.listEmbeddings,
+    staleEmbeddings: repo.staleEmbeddings,
+    setEmbedding: repo.setEmbedding,
   };
 }
 

@@ -273,3 +273,32 @@ describe('boxes', () => {
     expect(await repo.listBoxes()).toEqual([]);
   });
 });
+
+describe('assistant data', () => {
+  it('remembers which subjects came from the assistant, across edits', async () => {
+    const { db, repo } = await testRepo();
+    const id = await repo.addItem({ name: 'Drill', tags: ['tools'], aiTags: ['power tool'] });
+    await repo.updateItem(id, { tags: ['tools', 'power tool', 'garage'] });
+    const rows = await db.getAllAsync<{ name: string; source: string }>(
+      'SELECT t.name, it.source FROM item_tags it JOIN tags t ON t.id = it.tag_id ORDER BY t.name',
+    );
+    expect(rows).toEqual([
+      { name: 'garage', source: 'user' },
+      { name: 'power tool', source: 'ai' },
+      { name: 'tools', source: 'user' },
+    ]);
+  });
+
+  it('marks embeddings stale when the item changes', async () => {
+    const { repo } = await testRepo();
+    const id = await repo.addItem({ name: 'Drill' });
+    expect(await repo.staleEmbeddings('m')).toEqual([id]);
+    await repo.setEmbedding(id, new Uint8Array(8), 'm');
+    expect(await repo.staleEmbeddings('m')).toEqual([]);
+    expect(await repo.listEmbeddings('m')).toHaveLength(1);
+    expect(await repo.staleEmbeddings('other')).toEqual([id]);
+    await repo.updateItem(id, { notes: 'Bosch' });
+    expect(await repo.staleEmbeddings('m')).toEqual([id]);
+    expect(await repo.listEmbeddings('m')).toHaveLength(0);
+  });
+});

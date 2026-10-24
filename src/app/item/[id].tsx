@@ -5,6 +5,8 @@ import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { askForPhoto, PhotoPlate, useFullPhoto } from '@/components/PhotoPlate';
+import { tagList, withTag } from '@/ai/text';
+import { SuggestSubjects } from '@/components/SuggestSubjects';
 import type { HistoryEvent } from '@/db/types';
 import { callNumber, dueState, relativeDays, shortDate, stampDate } from '@/lib/format';
 import { useData, useItem, useRecentPlaces } from '@/state/data';
@@ -119,8 +121,10 @@ export default function ItemScreen() {
             {editing ? (
               <EditFields
                 initial={{ name: item.name, tags: item.tags.join(', '), notes: item.notes ?? '' }}
+                photo={cover?.data ?? item.cover ?? null}
                 onDone={async (v) => {
-                  await actions.updateItem(item.id, { name: v.name, notes: v.notes, tags: v.tags.split(',') });
+                  const tags = tagList(v.tags);
+                  await actions.updateItem(item.id, { name: v.name, notes: v.notes, tags, aiTags: v.aiTags.filter((t) => tags.includes(t)) });
                   setEditing(false);
                 }}
               />
@@ -267,18 +271,28 @@ const showError = (e: unknown) =>
 
 function EditFields({
   initial,
+  photo,
   onDone,
 }: {
   initial: { name: string; tags: string; notes: string };
-  onDone: (v: { name: string; tags: string; notes: string }) => Promise<void>;
+  /** Cover photo (base64 JPEG) for the assistant to look at. */
+  photo: string | null;
+  onDone: (v: { name: string; tags: string; notes: string; aiTags: string[] }) => Promise<void>;
 }) {
   const p = usePalette();
-  const [v, setV] = useState(initial);
+  const [v, setV] = useState({ ...initial, aiTags: [] as string[] });
   const [error, setError] = useState<string | null>(null);
   return (
     <View style={{ gap: 16 }}>
       <TypedInput big value={v.name} onChangeText={(name) => setV({ ...v, name })} autoFocus accessibilityLabel="Name" />
       <TypedInput label="Subjects (comma separated)" value={v.tags} onChangeText={(tags) => setV({ ...v, tags })} autoCapitalize="none" />
+      <SuggestSubjects
+        name={v.name}
+        notes={v.notes}
+        photo={photo ? { base64: photo } : null}
+        tags={v.tags}
+        onTag={(t) => setV((cur) => ({ ...cur, tags: withTag(cur.tags, t), aiTags: [...cur.aiTags, t] }))}
+      />
       <TypedInput label="Notes" value={v.notes} onChangeText={(notes) => setV({ ...v, notes })} multiline />
       {error && (
         <T variant="small" color={p.stamp}>

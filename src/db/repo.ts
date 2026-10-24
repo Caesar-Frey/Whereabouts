@@ -229,17 +229,60 @@ export function createRepo(db: Db, deps: RepoDeps) {
     await db.runAsync('DELETE FROM locations WHERE id = ?', [sourceId]);
   }
 
-  async function setTags(itemId: string, tags: string[]): Promise<void> {
+  /**
+   * Replaces an item's subjects. `aiTags` were suggested by the on-device
+   * assistant and approved by the user; subjects kept from before keep their
+   * origin.
+   */
+  async function setTags(itemId: string, tags: string[], aiTags: string[] = []): Promise<void> {
+    const before = await db.getAllAsync<{ name: string; source: string }>(
+      'SELECT t.name, it.source FROM item_tags it JOIN tags t ON t.id = it.tag_id WHERE it.item_id = ?',
+      [itemId],
+    );
+    const sourceOf = new Map(before.map((r) => [r.name.toLowerCase(), r.source]));
+    for (const t of cleanTags(aiTags)) sourceOf.set(t.toLowerCase(), 'ai');
     await db.runAsync('DELETE FROM item_tags WHERE item_id = ?', [itemId]);
-    for (const tag of cleanTags(tags)) {
+    for (const tag of cleanTags([...tags, ...aiTags])) {
       let row = await db.getFirstAsync<{ id: string }>('SELECT id FROM tags WHERE name = ? COLLATE NOCASE', [tag]);
       if (!row) {
         row = { id: uuid() };
         await db.runAsync('INSERT INTO tags (id, name) VALUES (?, ?)', [row.id, tag]);
       }
-      await db.runAsync('INSERT OR IGNORE INTO item_tags (item_id, tag_id) VALUES (?, ?)', [itemId, row.id]);
+      await db.runAsync('INSERT OR IGNORE INTO item_tags (item_id, tag_id, source) VALUES (?, ?, ?)', [
+        itemId,
+        row.id,
+        sourceOf.get(tag.toLowerCase()) === 'ai' ? 'ai' : 'user',
+      ]);
     }
     await db.runAsync('DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM item_tags)');
+  }
+
+  /** Stored embeddings that are still current (newer than the item's last change). */
+  async function listEmbeddings(model: string): Promise<{ id: string; embedding: Uint8Array }[]> {
+    return db.getAllAsync<{ id: string; embedding: Uint8Array }>(
+      `SELECT id, embedding FROM items
+       WHERE embedding IS NOT NULL AND embedding_model = ? AND embedding_updated_at >= updated_at`,
+      [model],
+    );
+  }
+
+  /** Items whose embedding is missing or older than their last change. */
+  async function staleEmbeddings(model: string, limit = 50): Promise<string[]> {
+    const rows = await db.getAllAsync<{ id: string }>(
+      `SELECT id FROM items
+       WHERE embedding IS NULL OR embedding_model IS NOT ? OR embedding_updated_at < updated_at
+       ORDER BY updated_at DESC LIMIT ?`,
+      [model, limit],
+    );
+    return rows.map((r) => r.id);
+  }
+
+  async function setEmbedding(itemId: string, embedding: Uint8Array, model: string): Promise<void> {
+    // Stamped with the item's own updated_at so a later edit marks it stale.
+    await db.runAsync(
+      'UPDATE items SET embedding = ?, embedding_model = ?, embedding_updated_at = updated_at WHERE id = ?',
+      [embedding, model, itemId],
+    );
   }
 
   /**
@@ -255,6 +298,8 @@ export function createRepo(db: Db, deps: RepoDeps) {
     placeNames?: string[];
     notes?: string | null;
     tags?: string[];
+    /** Subjects suggested by the assistant and approved. */
+    aiTags?: string[];
     lendTo?: { person: string; dueAt?: number | null };
     photos?: PhotoInput[];
   }): Promise<string> {
@@ -279,7 +324,7 @@ export function createRepo(db: Db, deps: RepoDeps) {
           [uuid(), id, locationId, toPath, t],
         );
       }
-      if (input.tags?.length) await setTags(id, input.tags);
+      if (input.tags?.length || input.aiTags?.length) await setTags(id, input.tags ?? [], input.aiTags);
       await touchLocation(locationId);
       if (person) await insertLoan(id, person, input.lendTo?.dueAt ?? null, null, t);
       for (const photo of input.photos ?? []) await insertPhoto({ itemId: id }, photo, t);
@@ -337,7 +382,7 @@ export function createRepo(db: Db, deps: RepoDeps) {
 
   async function updateItem(
     id: string,
-    patch: { name?: string; notes?: string | null; tags?: string[] },
+    patch: { name?: string; notes?: string | null; tags?: string[]; aiTags?: string[] },
   ): Promise<void> {
     await db.withTransactionAsync(async () => {
       if (patch.name !== undefined) {
@@ -346,7 +391,7 @@ export function createRepo(db: Db, deps: RepoDeps) {
       if (patch.notes !== undefined) {
         await db.runAsync('UPDATE items SET notes = ? WHERE id = ?', [cleanNotes(patch.notes), id]);
       }
-      if (patch.tags !== undefined) await setTags(id, patch.tags);
+      if (patch.tags !== undefined || patch.aiTags !== undefined) await setTags(id, patch.tags ?? [], patch.aiTags);
       await db.runAsync('UPDATE items SET updated_at = ? WHERE id = ?', [now(), id]);
     });
   }
@@ -639,6 +684,9 @@ export function createRepo(db: Db, deps: RepoDeps) {
     allSettings,
     listBoxes,
     setFingerprint,
+    listEmbeddings,
+    staleEmbeddings,
+    setEmbedding,
     clearBox,
     listLocations,
     ensureLocationPath,

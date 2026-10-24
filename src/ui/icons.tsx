@@ -220,3 +220,29 @@ export function MicrophoneIcon({ size = 24, color, strokeWidth = 1.7 }: IconProp
     </Svg>
   );
 }
+
+/** A reading owl on a branch: the library assistant. */
+export function OwlIcon({ size = 24, color, accent, strokeWidth = 1.6 }: IconProps) {
+  return (
+    <Svg {...base(size)}>
+      <Path
+        d="M6.5 7.5L6 3.5l3 2.2c1.8-.6 4.2-.6 6 0l3-2.2-.5 4c1 1.2 1.5 2.7 1.5 4.5v2.5c0 3.6-3 6.5-7 6.5s-7-2.9-7-6.5V12c0-1.8.5-3.3 1.5-4.5z"
+        stroke={color}
+        strokeWidth={strokeWidth}
+        strokeLinejoin="round"
+      />
+      <Circle cx={9.5} cy={10.5} r={2} stroke={color} strokeWidth={strokeWidth} fill={accent ?? 'none'} />
+      <Circle cx={14.5} cy={10.5} r={2} stroke={color} strokeWidth={strokeWidth} fill={accent ?? 'none'} />
+      <Path d="M11.2 13.2l.8 1.2.8-1.2M9.5 17c.8.5 1.6.7 2.5.7s1.7-.2 2.5-.7M3.5 21h17" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+/** A pencilled tick and spark: "suggested by the assistant". */
+export function SparkIcon({ size = 24, color, strokeWidth = 1.6 }: IconProps) {
+  return (
+    <Svg {...base(size)}>
+      <Path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M18 6l-2.5 2.5M8.5 15.5L6 18" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+    </Svg>
+  );
+}

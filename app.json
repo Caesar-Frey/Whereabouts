@@ -77,7 +77,8 @@
             "com.google.android.googlequicksearchbox"
           ]
         }
-      ]
+      ],
+      "llama.rn"
     ],
     "experiments": {
       "typedRoutes": false

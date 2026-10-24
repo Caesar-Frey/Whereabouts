@@ -11,6 +11,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { AssistantProvider } from '@/ai/assistant';
 import { DataGate } from '@/components/DataGate';
 import { ReminderSync } from '@/components/ReminderSync';
 import { LockGate } from '@/security/lock';
@@ -51,6 +52,7 @@ export default function RootLayout() {
         <LockGate>
           <DataProvider>
             <DataGate>
+              <AssistantProvider>
               <ToastProvider>
               <ReminderSync />
               <Stack
@@ -75,6 +77,7 @@ export default function RootLayout() {
                 <Stack.Screen name="seal" options={{ presentation: 'modal', title: 'Seal the catalog' }} />
               </Stack>
               </ToastProvider>
+              </AssistantProvider>
             </DataGate>
           </DataProvider>
         </LockGate>

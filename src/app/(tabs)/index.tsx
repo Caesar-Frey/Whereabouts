@@ -3,6 +3,7 @@ import { useDeferredValue, useMemo, useRef, useState } from 'react';
 import { FlatList, Keyboard, Pressable, ScrollView, StyleSheet, TextInput, View, type TextInputInstance } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useMeaningSearch } from '@/ai/assistant';
 import { ItemCard } from '@/components/ItemCard';
 import { VoiceButton } from '@/components/VoiceButton';
 import type { Item, Location } from '@/db/types';
@@ -40,6 +41,15 @@ export default function CatalogScreen() {
   }, [catalog, deferred, items]);
 
   const searching = deferred.trim().length > 0;
+
+  // Close in meaning but not in spelling: "something to cut wood" → the saw.
+  const meaningHits = useMeaningSearch(deferred);
+  const maybe = useMemo(() => {
+    if (!meaningHits.length) return [];
+    const shown = new Set(things.map((i) => i.id));
+    const byId = new Map(items.map((i) => [i.id, i]));
+    return meaningHits.filter((h) => !shown.has(h.id)).flatMap((h) => byId.get(h.id) ?? []);
+  }, [meaningHits, things, items]);
 
   return (
     <Room>
@@ -114,9 +124,23 @@ export default function CatalogScreen() {
           </View>
         }
         renderItem={({ item, index: i }) => <ItemCard item={item} enterIndex={i} />}
+        ListFooterComponent={
+          maybe.length > 0 ? (
+            <View style={{ gap: 12, marginTop: things.length ? 12 : 0 }}>
+              <SectionLabel>Might be what you mean</SectionLabel>
+              {maybe.map((item, i) => (
+                <ItemCard key={item.id} item={item} enterIndex={i} />
+              ))}
+            </View>
+          ) : undefined
+        }
         ListEmptyComponent={
           items.length === 0 ? (
             <EmptyLibrary />
+          ) : maybe.length > 0 ? (
+            <T variant="italic" color={p.inkSoft}>
+              No card spelled like “{deferred.trim()}”.
+            </T>
           ) : places.length === 0 ? (
             <View style={styles.empty}>
               <Stamp text="No card" sub="in the catalog" color={p.stamp} />

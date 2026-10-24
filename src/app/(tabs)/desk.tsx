@@ -5,6 +5,7 @@ import { Alert, Linking, ScrollView, StyleSheet, Switch, View } from 'react-nati
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { canSealWithBiometrics, canUseDeviceAuth, RELOCK_AFTER_MS, useAppLock } from '@/security/lock';
+import { AssistantCard } from '@/components/AssistantCard';
 import { REMINDERS_OFF_KEY } from '@/components/ReminderSync';
 import { olderThan, relativeDays, shortDate } from '@/lib/format';
 import { askForReminders, reminderPermission, type ReminderPermission } from '@/reminders/scheduler';
@@ -201,6 +202,8 @@ export default function DeskScreen() {
           </View>
         </IndexCard>
 
+        <AssistantCard />
+
         <IndexCard punched ruled>
           <View style={{ gap: 12 }}>
             <T variant="label" color={p.headRule} style={{ marginBottom: 14 }}>
@@ -209,7 +212,7 @@ export default function DeskScreen() {
             <Rule text="Everything stays on this phone. There's no account and nothing is uploaded." />
             <Rule text="Your catalog is encrypted with a key kept in the phone's secure keychain." />
             <Rule text="Backups are sealed with your passphrase before they leave the app." />
-            <Rule text="No ads, no analytics, no tracking. The app never goes online." />
+            <Rule text="No ads, no analytics, no tracking. The app only goes online to download the optional assistant, if you ask it to." />
           </View>
         </IndexCard>
 

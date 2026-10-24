@@ -7,6 +7,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LoanFields, type LoanValue } from '@/components/LoanFields';
 import { askForPhoto, PhotoPlate } from '@/components/PhotoPlate';
 import { PlacePicker } from '@/components/PlacePicker';
+import { tagList, withTag } from '@/ai/text';
+import { SuggestSubjects } from '@/components/SuggestSubjects';
 import { VoiceButton } from '@/components/VoiceButton';
 import { daysFromNow } from '@/lib/format';
 import { PATH_SEPARATOR } from '@/lib/locations';
@@ -34,6 +36,8 @@ export default function AddScreen() {
   const [tags, setTags] = useState('');
   const [notes, setNotes] = useState('');
   const [photos, setPhotos] = useState<CapturedPhoto[]>([]);
+  /** Subjects the user took from the assistant's suggestions. */
+  const [aiTags, setAiTags] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<{ name: string; n: number } | null>(null);
@@ -69,7 +73,8 @@ export default function AddScreen() {
         name,
         place,
         notes,
-        tags: tags.split(','),
+        tags: tagList(tags),
+        aiTags: aiTags.filter((t) => tagList(tags).includes(t)),
         lendTo: lent ? { person: loan.person, dueAt: loan.dueAt } : undefined,
         photos,
       });
@@ -78,6 +83,7 @@ export default function AddScreen() {
         setLastSaved((s) => ({ name: name.trim(), n: (s?.n ?? 0) + 1 }));
         setName('');
         setTags('');
+        setAiTags([]);
         setNotes('');
         setPhotos([]);
         nameRef.current?.focus();
@@ -112,7 +118,7 @@ export default function AddScreen() {
                 </T>
                 <VoiceButton listening={dictation.state === 'listening'} onPress={listen} size={38} />
               </View>
-              {(dictation.state === 'listening' || dictation.transcript) && (
+              {(dictation.state === 'listening' || !!dictation.transcript) && (
                 <T variant="italic" color={p.inkSoft} accessibilityLiveRegion="polite">
                   {dictation.transcript
                     ? `“${dictation.transcript}”`
@@ -163,6 +169,19 @@ export default function AddScreen() {
                   </Pressable>
                 )}
               </View>
+
+              <SuggestSubjects
+                name={name}
+                notes={notes}
+                photo={photos[0] ? { uri: photos[0].uri } : null}
+                tags={tags}
+                onName={name.trim() ? undefined : setName}
+                onTag={(t) => {
+                  setTags((cur) => withTag(cur, t));
+                  setAiTags((cur) => [...cur, t]);
+                  setMore(true);
+                }}
+              />
 
               <View style={styles.toggleRow}>
                 <Toggle label="On a shelf" on={!lent} onPress={() => setLent(false)} />
