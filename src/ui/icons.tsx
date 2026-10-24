@@ -177,3 +177,14 @@ export function PigeonholeIcon({ size = 24, color, accent, strokeWidth = 1.6 }: 
     </Svg>
   );
 }
+
+/** An archive box with a brass label holder and lid. */
+export function ArchiveBoxIcon({ size = 24, color, accent, strokeWidth = 1.6 }: IconProps) {
+  return (
+    <Svg {...base(size)}>
+      <Rect x={2.5} y={4} width={19} height={5} rx={1} stroke={color} strokeWidth={strokeWidth} />
+      <Path d="M4 9v10a1.5 1.5 0 0 0 1.5 1.5h13A1.5 1.5 0 0 0 20 19V9" stroke={color} strokeWidth={strokeWidth} strokeLinejoin="round" />
+      <Rect x={8.5} y={12} width={7} height={3.5} rx={0.6} stroke={color} strokeWidth={strokeWidth} fill={accent ?? 'none'} />
+    </Svg>
+  );
+}

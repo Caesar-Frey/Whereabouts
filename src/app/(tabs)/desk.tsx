@@ -1,18 +1,20 @@
 import Constants from 'expo-constants';
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { canUseDeviceAuth, RELOCK_AFTER_MS, useAppLock } from '@/security/lock';
-import { useData } from '@/state/data';
-import { IndexCard, Room, SectionLabel, T } from '@/ui/components';
-import { KeyholeIcon } from '@/ui/icons';
+import { olderThan, relativeDays, shortDate } from '@/lib/format';
+import { LAST_BACKUP_KEY, useData } from '@/state/data';
+import { IndexCard, LibraryButton, Room, SectionLabel, T } from '@/ui/components';
+import { ArchiveBoxIcon, KeyholeIcon } from '@/ui/icons';
 import { usePalette } from '@/ui/theme';
 
 export default function DeskScreen() {
   const p = usePalette();
   const insets = useSafeAreaInsets();
-  const { items, locations } = useData();
+  const { items, locations, settings } = useData();
   const lock = useAppLock();
   const [available, setAvailable] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
@@ -34,6 +36,8 @@ export default function DeskScreen() {
   };
 
   const lent = items.filter((i) => i.activeLoan).length;
+  const lastBackup = settings[LAST_BACKUP_KEY] ? Number(settings[LAST_BACKUP_KEY]) : null;
+  const backupStale = items.length > 0 && olderThan(lastBackup, BACKUP_NUDGE_MS);
 
   return (
     <Room>
@@ -70,6 +74,43 @@ export default function DeskScreen() {
           </View>
         </IndexCard>
 
+        <IndexCard punched={false} ruled={false} style={{ paddingBottom: 16 }}>
+          <View style={{ gap: 14 }}>
+            <View style={styles.row}>
+              <View style={[styles.badge, { backgroundColor: backupStale ? p.leather : p.lamp }]}>
+                <ArchiveBoxIcon size={22} color={p.brassLight} />
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <T variant="heading">Backups</T>
+                <T variant="small" color={backupStale ? p.stamp : p.inkSoft}>
+                  {lastBackup === null
+                    ? items.length
+                      ? 'No backup yet. If this phone is lost, so is your catalog.'
+                      : 'Seal a copy of your catalog with a passphrase.'
+                    : `Last backup ${shortDate(lastBackup)} (${relativeDays(lastBackup)}).`}
+                </T>
+              </View>
+            </View>
+            <View style={styles.buttons}>
+              <LibraryButton
+                style={{ flex: 1 }}
+                compact
+                tone={backupStale ? 'leather' : 'lamp'}
+                label="Make a backup"
+                disabled={items.length === 0 && locations.length === 0}
+                onPress={() => router.push('/archive')}
+              />
+              <LibraryButton
+                style={{ flex: 1 }}
+                compact
+                tone="ghost"
+                label="Restore"
+                onPress={() => router.push({ pathname: '/archive', params: { mode: 'restore' } })}
+              />
+            </View>
+          </View>
+        </IndexCard>
+
         <IndexCard punched ruled>
           <View style={{ gap: 12 }}>
             <T variant="label" color={p.headRule} style={{ marginBottom: 14 }}>
@@ -77,6 +118,7 @@ export default function DeskScreen() {
             </T>
             <Rule text="Everything stays on this phone. There's no account and nothing is uploaded." />
             <Rule text="Your catalog is encrypted with a key kept in the phone's secure keychain." />
+            <Rule text="Backups are sealed with your passphrase before they leave the app." />
             <Rule text="No ads, no analytics, no tracking. The app never goes online." />
           </View>
         </IndexCard>
@@ -95,6 +137,9 @@ export default function DeskScreen() {
     </Room>
   );
 }
+
+/** Suggest a fresh backup after this long. */
+const BACKUP_NUDGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 function Rule({ text }: { text: string }) {
   const p = usePalette();
@@ -124,5 +169,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   badge: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
   stats: { flexDirection: 'row', gap: 10 },
+  buttons: { flexDirection: 'row', gap: 10 },
   stat: { flex: 1, alignItems: 'center', paddingVertical: 14, borderRadius: 4, borderWidth: StyleSheet.hairlineWidth },
 });

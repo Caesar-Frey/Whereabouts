@@ -72,3 +72,8 @@ export function relativeDays(t: number, now = Date.now()): string {
   if (days > 0) return `in ${days} days`;
   return `${-days} days ago`;
 }
+
+/** True if `t` is missing or more than `ms` in the past. */
+export function olderThan(t: number | null, ms: number, now = Date.now()): boolean {
+  return t === null || now - t > ms;
+}

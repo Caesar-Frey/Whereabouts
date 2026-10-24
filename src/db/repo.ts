@@ -437,7 +437,13 @@ export function createRepo(db: Db, deps: RepoDeps) {
     );
   }
 
+  async function allSettings(): Promise<Record<string, string>> {
+    const rows = await db.getAllAsync<{ key: string; value: string }>('SELECT key, value FROM settings');
+    return Object.fromEntries(rows.map((r) => [r.key, r.value]));
+  }
+
   return {
+    allSettings,
     listLocations,
     ensureLocationPath,
     renameLocation,

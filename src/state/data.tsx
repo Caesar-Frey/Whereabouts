@@ -1,6 +1,8 @@
 import * as Crypto from 'expo-crypto';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
+import { dumpCatalog, openArchive, restoreCatalog, sealArchive, type CatalogDump } from '../backup/archive';
+import { nativeAead, randomBytes, shareArchive } from '../backup/device';
 import { openEncryptedDatabase } from '../db/open';
 import { createRepo, type Repo } from '../db/repo';
 import type { Db, Item, Location } from '../db/types';
@@ -11,6 +13,7 @@ export interface Snapshot {
   locations: Location[];
   index: LocationIndex;
   people: string[];
+  settings: Record<string, string>;
 }
 
 type Status = { state: 'loading' } | { state: 'error'; error: Error } | { state: 'ready' };
@@ -22,11 +25,14 @@ interface DataContextValue {
   retry: () => void;
 }
 
-const EMPTY: Snapshot = { items: [], locations: [], index: buildLocationIndex([]), people: [] };
+const EMPTY: Snapshot = { items: [], locations: [], index: buildLocationIndex([]), people: [], settings: {} };
+
+/** When this phone last made a backup. A device setting, so a restore doesn't overwrite it. */
+export const LAST_BACKUP_KEY = 'device.lastBackupAt';
 
 const DataContext = createContext<DataContextValue | null>(null);
 
-function makeActions(repo: Repo, refresh: () => Promise<void>) {
+function makeActions(db: Db, repo: Repo, refresh: () => Promise<void>) {
   const run =
     <A extends unknown[], R>(fn: (...args: A) => Promise<R>) =>
     async (...args: A): Promise<R> => {
@@ -68,20 +74,39 @@ function makeActions(repo: Repo, refresh: () => Promise<void>) {
     deletePlace: run(repo.deleteLocation),
     itemHistory: repo.itemHistory,
     getSetting: repo.getSetting,
-    setSetting: repo.setSetting,
+    setSetting: run(repo.setSetting),
+
+    /** Seals the whole catalog with `passphrase` and opens the share sheet. */
+    exportArchive: async (passphrase: string, onProgress?: (f: number) => void) => {
+      const now = Date.now();
+      const bytes = await sealArchive(await dumpCatalog(db, now), passphrase, { aead: nativeAead, randomBytes, onProgress });
+      await shareArchive(bytes, now);
+      await repo.setSetting(LAST_BACKUP_KEY, String(now));
+      await refresh();
+    },
+    openArchive: (bytes: Uint8Array, passphrase: string, onProgress?: (f: number) => void) =>
+      openArchive(bytes, passphrase, { aead: nativeAead, randomBytes, onProgress }),
+    /** Replaces everything with the archived catalog. */
+    restoreArchive: run((dump: CatalogDump) => restoreCatalog(db, dump)),
   };
 }
 
 export type Actions = ReturnType<typeof makeActions>;
 
 async function loadSnapshot(repo: Repo): Promise<Snapshot> {
-  const [items, locations, people] = await Promise.all([repo.listItems(), repo.listLocations(), repo.knownPeople()]);
-  return { items, locations, index: buildLocationIndex(locations), people };
+  const [items, locations, people, settings] = await Promise.all([
+    repo.listItems(),
+    repo.listLocations(),
+    repo.knownPeople(),
+    repo.allSettings(),
+  ]);
+  return { items, locations, index: buildLocationIndex(locations), people, settings };
 }
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>({ state: 'loading' });
-  const [repo, setRepo] = useState<Repo | null>(null);
+  const [store, setStore] = useState<{ db: Db; repo: Repo } | null>(null);
+  const repo = store?.repo ?? null;
   const [snapshot, setSnapshot] = useState<Snapshot>(EMPTY);
   const [attempt, setAttempt] = useState(0);
 
@@ -98,7 +123,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const opened = createRepo(db, { now: Date.now, uuid: Crypto.randomUUID });
       const first = await loadSnapshot(opened);
       if (cancelled) return;
-      setRepo(opened);
+      setStore({ db: handle, repo: opened });
       setSnapshot(first);
       setStatus({ state: 'ready' });
     })().catch((e: unknown) => {
@@ -116,7 +141,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (repo) setSnapshot(await loadSnapshot(repo));
   }, [repo]);
 
-  const actions = useMemo(() => (repo ? makeActions(repo, refresh) : null), [repo, refresh]);
+  const actions = useMemo(() => (store ? makeActions(store.db, store.repo, refresh) : null), [store, refresh]);
   const retry = useCallback(() => {
     setStatus({ state: 'loading' });
     setAttempt((n) => n + 1);

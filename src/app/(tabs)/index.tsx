@@ -135,6 +135,11 @@ function EmptyLibrary() {
         Write a card for something you tend to misplace: the spare keys, the passport, the drill you lent out.
       </T>
       <LibraryButton label="Write the first card" onPress={() => router.push('/add')} />
+      <LibraryButton
+        label="Restore a backup"
+        tone="ghost"
+        onPress={() => router.push({ pathname: '/archive', params: { mode: 'restore' } })}
+      />
     </View>
   );
 }

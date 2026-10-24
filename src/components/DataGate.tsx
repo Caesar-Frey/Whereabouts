@@ -29,7 +29,7 @@ export function DataGate({ children }: { children: ReactNode }) {
   const confirmErase = () =>
     Alert.alert(
       'Erase everything?',
-      'Your catalog cannot be unlocked on this device. Erasing deletes all saved things and places so you can start fresh. This cannot be undone.',
+      'Your catalog cannot be unlocked on this device. Erasing deletes all saved things and places so you can start fresh. If you have a backup, you can restore it afterwards from the Desk. This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
