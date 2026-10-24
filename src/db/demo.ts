@@ -1,3 +1,5 @@
+import { addView, encodeFingerprint, FINGERPRINT_MODEL } from '../boxes/fingerprint';
+import { DEMO_BOX, DEMO_STOVE } from './demoPhotos';
 import { createRepo } from './repo';
 import type { Db } from './types';
 
@@ -18,7 +20,7 @@ export async function seedDemo(db: Db): Promise<void> {
   await repo.addItem({ name: 'Christmas lights', locationId: attic, tags: ['seasonal'] });
   await repo.addItem({ name: 'Passport', locationId: desk, tags: ['documents', 'travel'], notes: 'Expires 2031' });
   const drill = await repo.addItem({ name: 'Cordless drill', locationId: shelf, tags: ['tools'] });
-  await repo.addItem({ name: 'Camping stove', locationId: blueBox, tags: ['camping'] });
+  await repo.addItem({ name: 'Camping stove', locationId: blueBox, tags: ['camping'], photos: [DEMO_STOVE] });
   await repo.addItem({ name: 'HDMI cable', locationId: blueBox });
   const ladder = await repo.addItem({ name: 'Step ladder', locationId: shelf, tags: ['tools'] });
   const book = await repo.addItem({ name: 'The Name of the Wind', locationId: null, tags: ['books'] });
@@ -26,6 +28,10 @@ export async function seedDemo(db: Db): Promise<void> {
   await repo.addItem({ name: 'Gym bag', locationId: office });
   await repo.moveItem(drill, blueBox);
   await repo.moveItem(drill, shelf);
+
+  const fp = addView(null, { words: ['camping'], text: 'CAMPING', hist: [], grid: [] });
+  await repo.setFingerprint(blueBox, encodeFingerprint(fp), FINGERPRINT_MODEL);
+  await repo.addPhoto({ locationId: blueBox }, { ...DEMO_BOX, kind: 'label' });
 
   await repo.lendItem(ladder, { person: 'Sam', dueAt: Date.now() - 2 * DAY });
   await repo.lendItem(book, { person: 'Priya', dueAt: Date.now() + 9 * DAY });

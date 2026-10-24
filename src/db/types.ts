@@ -42,6 +42,29 @@ export interface Item {
   tags: string[];
   /** The loan that has not been returned yet, if the item is lent out. */
   activeLoan: Loan | null;
+  /** Photo ids, oldest first. The first is the cover. */
+  photoIds: string[];
+  /** Base64 JPEG thumbnail of the cover photo. */
+  cover: string | null;
+}
+
+export interface PhotoInput {
+  data: string;
+  thumb: string;
+  width: number;
+  height: number;
+  kind?: 'item' | 'box' | 'label';
+}
+
+export interface Photo {
+  id: string;
+  itemId: string | null;
+  locationId: string | null;
+  kind: 'item' | 'box' | 'label';
+  data: string;
+  width: number | null;
+  height: number | null;
+  createdAt: number;
 }
 
 export type HistoryEvent =
@@ -54,3 +77,12 @@ export type HistoryEvent =
     }
   | { kind: 'lent'; id: string; at: number; person: string; dueAt: number | null }
   | { kind: 'returned'; id: string; at: number; person: string };
+
+/** A place that can be recognised from a photo of it (a box, a bag, a drawer...). */
+export interface BoxInfo {
+  locationId: string;
+  /** Raw fingerprint JSON; decode with decodeFingerprint. */
+  fingerprint: Uint8Array | null;
+  photoIds: string[];
+  cover: string | null;
+}

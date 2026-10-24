@@ -1,5 +1,5 @@
 import { buildLocationIndex } from '../src/lib/locations';
-import { migrate } from '../src/db/schema';
+import { MIGRATIONS, migrate } from '../src/db/schema';
 import { testRepo } from './testDb';
 
 describe('schema', () => {
@@ -7,7 +7,7 @@ describe('schema', () => {
     const { db } = await testRepo();
     await migrate(db);
     const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
-    expect(row?.user_version).toBe(1);
+    expect(row?.user_version).toBe(MIGRATIONS.length);
   });
 });
 
@@ -129,8 +129,8 @@ describe('items', () => {
     const a = await repo.ensureLocationPath(['Garage']);
     const b = await repo.ensureLocationPath(['Attic']);
     const id = await repo.addItem({ name: 'Tent', locationId: a });
-    expect(await repo.moveItem(id, b)).toBe(true);
-    expect(await repo.moveItem(id, b)).toBe(false);
+    expect(await repo.moveItem(id, b)).toEqual(expect.any(String));
+    expect(await repo.moveItem(id, b)).toBeNull();
     const history = await repo.itemHistory(id);
     expect(history.map((h) => h.kind === 'moved' && h.toPath)).toEqual(['Attic', 'Garage']);
   });
@@ -173,5 +173,132 @@ describe('settings', () => {
     await repo.setSetting('x', '1');
     await repo.setSetting('x', '2');
     expect(await repo.getSetting('x')).toBe('2');
+  });
+});
+
+describe('undo', () => {
+  it('takes a move back and drops it from the history', async () => {
+    const { repo } = await testRepo();
+    const a = await repo.ensureLocationPath(['A']);
+    const b = await repo.ensureLocationPath(['B']);
+    const id = await repo.addItem({ name: 'Drill', locationId: a });
+    const moveId = await repo.moveItem(id, b);
+    expect(await repo.moveItem(id, b)).toBeNull();
+    await repo.undoMove(moveId!);
+    expect((await repo.listItems())[0]!.locationId).toBe(a);
+    expect((await repo.itemHistory(id)).map((h) => h.kind)).toEqual(['moved']);
+  });
+
+  it("doesn't undo a move once the item has moved again", async () => {
+    const { repo } = await testRepo();
+    const [a, b, c] = [await repo.ensureLocationPath(['A']), await repo.ensureLocationPath(['B']), await repo.ensureLocationPath(['C'])];
+    const id = await repo.addItem({ name: 'Drill', locationId: a });
+    const first = await repo.moveItem(id, b);
+    await repo.moveItem(id, c);
+    await repo.undoMove(first!);
+    expect((await repo.listItems())[0]!.locationId).toBe(c);
+  });
+
+  it('re-opens a returned loan', async () => {
+    const { repo } = await testRepo();
+    const id = await repo.addItem({ name: 'Book', lendTo: { person: 'Sam', dueAt: 99 } });
+    const loanId = await repo.returnItem(id);
+    expect((await repo.listItems())[0]!.activeLoan).toBeNull();
+    await repo.undoReturn(loanId!);
+    expect((await repo.listItems())[0]!.activeLoan).toMatchObject({ person: 'Sam', dueAt: 99 });
+    expect(await repo.returnItem('nope')).toBeNull();
+  });
+
+  it('restores a withdrawn item with its tags, loans and history', async () => {
+    const { repo } = await testRepo();
+    const a = await repo.ensureLocationPath(['A']);
+    const b = await repo.ensureLocationPath(['B']);
+    const id = await repo.addItem({ name: 'Tent', locationId: a, tags: ['camping'], notes: 'green' });
+    await repo.moveItem(id, b);
+    await repo.lendItem(id, { person: 'Sam' });
+    const before = await repo.listItems();
+    const history = await repo.itemHistory(id);
+    const snap = await repo.deleteItem(id);
+    expect(await repo.listItems()).toEqual([]);
+    await repo.restoreItem(snap!);
+    expect(await repo.listItems()).toEqual(before);
+    expect(await repo.itemHistory(id)).toEqual(history);
+  });
+
+  it('restores an item as unshelved if its place is gone', async () => {
+    const { repo } = await testRepo();
+    const a = await repo.ensureLocationPath(['A']);
+    const id = await repo.addItem({ name: 'Tent', locationId: a });
+    const snap = await repo.deleteItem(id);
+    await repo.deleteLocation(a);
+    await repo.restoreItem(snap!);
+    expect((await repo.listItems())[0]!.locationId).toBeNull();
+  });
+});
+
+describe('photos', () => {
+  const photo = (n: number) => ({ data: `full${n}`, thumb: `thumb${n}`, width: 1600, height: 1200 });
+
+  it('stores photos with an item, uses the first as cover, and survives withdraw + undo', async () => {
+    const { repo } = await testRepo();
+    const id = await repo.addItem({ name: 'Tent', placeNames: ['Attic'], photos: [photo(1)] });
+    const second = await repo.addPhoto({ itemId: id }, photo(2));
+    let [item] = await repo.listItems();
+    expect(item!.photoIds).toHaveLength(2);
+    expect(item!.cover).toBe('thumb1');
+    expect((await repo.getPhoto(second))?.data).toBe('full2');
+
+    const snap = await repo.deleteItem(id);
+    expect(await repo.getPhoto(second)).toBeNull();
+    await repo.restoreItem(snap!);
+    [item] = await repo.listItems();
+    expect(item!.photoIds).toHaveLength(2);
+
+    await repo.deletePhoto(item!.photoIds[0]!);
+    [item] = await repo.listItems();
+    expect(item!.cover).toBe('thumb2');
+  });
+});
+
+describe('boxes', () => {
+  it('keeps fingerprints and box photos per place, and forgets them together', async () => {
+    const { repo } = await testRepo();
+    const box = await repo.ensureLocationPath(['Garage', 'Blue box']);
+    await repo.setFingerprint(box, new Uint8Array([1, 2, 3]), 'wb-fp-1');
+    await repo.addPhoto({ locationId: box }, { data: 'd', thumb: 't', width: 1, height: 1, kind: 'box' });
+    const [info] = await repo.listBoxes();
+    expect(info).toMatchObject({ locationId: box, cover: 't' });
+    expect([...info!.fingerprint!]).toEqual([1, 2, 3]);
+    await repo.clearBox(box);
+    expect(await repo.listBoxes()).toEqual([]);
+  });
+});
+
+describe('assistant data', () => {
+  it('remembers which subjects came from the assistant, across edits', async () => {
+    const { db, repo } = await testRepo();
+    const id = await repo.addItem({ name: 'Drill', tags: ['tools'], aiTags: ['power tool'] });
+    await repo.updateItem(id, { tags: ['tools', 'power tool', 'garage'] });
+    const rows = await db.getAllAsync<{ name: string; source: string }>(
+      'SELECT t.name, it.source FROM item_tags it JOIN tags t ON t.id = it.tag_id ORDER BY t.name',
+    );
+    expect(rows).toEqual([
+      { name: 'garage', source: 'user' },
+      { name: 'power tool', source: 'ai' },
+      { name: 'tools', source: 'user' },
+    ]);
+  });
+
+  it('marks embeddings stale when the item changes', async () => {
+    const { repo } = await testRepo();
+    const id = await repo.addItem({ name: 'Drill' });
+    expect(await repo.staleEmbeddings('m')).toEqual([id]);
+    await repo.setEmbedding(id, new Uint8Array(8), 'm');
+    expect(await repo.staleEmbeddings('m')).toEqual([]);
+    expect(await repo.listEmbeddings('m')).toHaveLength(1);
+    expect(await repo.staleEmbeddings('other')).toEqual([id]);
+    await repo.updateItem(id, { notes: 'Bosch' });
+    expect(await repo.staleEmbeddings('m')).toEqual([id]);
+    expect(await repo.listEmbeddings('m')).toHaveLength(0);
   });
 });

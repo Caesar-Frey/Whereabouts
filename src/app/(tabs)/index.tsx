@@ -3,23 +3,29 @@ import { useDeferredValue, useMemo, useRef, useState } from 'react';
 import { FlatList, Keyboard, Pressable, ScrollView, StyleSheet, TextInput, View, type TextInputInstance } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useMeaningSearch } from '@/ai/assistant';
 import { ItemCard } from '@/components/ItemCard';
+import { VoiceButton } from '@/components/VoiceButton';
 import type { Item, Location } from '@/db/types';
 import { buildCatalog } from '@/search/catalog';
 import { useData } from '@/state/data';
 import { LibraryButton, Room, SectionLabel, SpineChip, Stamp, T } from '@/ui/components';
 import { CloseIcon, LoupeIcon } from '@/ui/icons';
 import { fonts, usePalette } from '@/ui/theme';
+import { spokenQuery } from '@/voice/parse';
+import { useDictation } from '@/voice/useDictation';
 
 export default function CatalogScreen() {
   const p = usePalette();
   const insets = useSafeAreaInsets();
-  const { items, locations, index } = useData();
+  const { items, locations, index, boxes } = useData();
   const [query, setQuery] = useState('');
   const deferred = useDeferredValue(query);
   const input = useRef<TextInputInstance>(null);
+  const dictation = useDictation((text) => setQuery(spokenQuery(text)));
+  const listening = dictation.state === 'listening';
 
-  const catalog = useMemo(() => buildCatalog(items, locations, index), [items, locations, index]);
+  const catalog = useMemo(() => buildCatalog(items, locations, index, boxes), [items, locations, index, boxes]);
   const { things, places } = useMemo(() => {
     if (!deferred.trim()) {
       return { things: [...items].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 40), places: [] as Location[] };
@@ -35,6 +41,15 @@ export default function CatalogScreen() {
   }, [catalog, deferred, items]);
 
   const searching = deferred.trim().length > 0;
+
+  // Close in meaning but not in spelling: "something to cut wood" → the saw.
+  const meaningHits = useMeaningSearch(deferred);
+  const maybe = useMemo(() => {
+    if (!meaningHits.length) return [];
+    const shown = new Set(things.map((i) => i.id));
+    const byId = new Map(items.map((i) => [i.id, i]));
+    return meaningHits.filter((h) => !shown.has(h.id)).flatMap((h) => byId.get(h.id) ?? []);
+  }, [meaningHits, things, items]);
 
   return (
     <Room>
@@ -59,7 +74,7 @@ export default function CatalogScreen() {
                 value={query}
                 onChangeText={setQuery}
                 autoFocus={items.length > 0}
-                placeholder="What are you looking for?"
+                placeholder={listening ? 'Listening…' : 'What are you looking for?'}
                 placeholderTextColor={p.inkFaint}
                 selectionColor={p.leather}
                 cursorColor={p.leather}
@@ -81,7 +96,14 @@ export default function CatalogScreen() {
                 >
                   <CloseIcon size={18} color={p.inkSoft} />
                 </Pressable>
-              ) : null}
+              ) : (
+                <VoiceButton
+                  size={34}
+                  listening={listening}
+                  accessibilityLabel="Ask out loud, like “where's my passport”"
+                  onPress={() => (listening ? dictation.stop() : dictation.start(items.slice(0, 100).map((i) => i.name)))}
+                />
+              )}
             </View>
             {places.length > 0 && (
               <View style={{ gap: 6 }}>
@@ -102,9 +124,23 @@ export default function CatalogScreen() {
           </View>
         }
         renderItem={({ item, index: i }) => <ItemCard item={item} enterIndex={i} />}
+        ListFooterComponent={
+          maybe.length > 0 ? (
+            <View style={{ gap: 12, marginTop: things.length ? 12 : 0 }}>
+              <SectionLabel>Might be what you mean</SectionLabel>
+              {maybe.map((item, i) => (
+                <ItemCard key={item.id} item={item} enterIndex={i} />
+              ))}
+            </View>
+          ) : undefined
+        }
         ListEmptyComponent={
           items.length === 0 ? (
             <EmptyLibrary />
+          ) : maybe.length > 0 ? (
+            <T variant="italic" color={p.inkSoft}>
+              No card spelled like “{deferred.trim()}”.
+            </T>
           ) : places.length === 0 ? (
             <View style={styles.empty}>
               <Stamp text="No card" sub="in the catalog" color={p.stamp} />
@@ -135,6 +171,11 @@ function EmptyLibrary() {
         Write a card for something you tend to misplace: the spare keys, the passport, the drill you lent out.
       </T>
       <LibraryButton label="Write the first card" onPress={() => router.push('/add')} />
+      <LibraryButton
+        label="Restore a backup"
+        tone="ghost"
+        onPress={() => router.push({ pathname: '/archive', params: { mode: 'restore' } })}
+      />
     </View>
   );
 }

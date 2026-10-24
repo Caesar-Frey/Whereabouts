@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BoxFingerprintCard } from '@/components/BoxFingerprintCard';
 import { ItemCard } from '@/components/ItemCard';
 import { callNumber } from '@/lib/format';
 import { useData } from '@/state/data';
@@ -178,6 +179,8 @@ export default function PlaceScreen() {
         {here.map((item, i) => (
           <ItemCard key={item.id} item={item} enterIndex={i} />
         ))}
+
+        <BoxFingerprintCard locationId={id} name={place.name} />
       </ScrollView>
     </Room>
   );

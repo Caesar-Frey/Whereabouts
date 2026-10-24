@@ -11,7 +11,7 @@ import { fonts, usePalette } from '@/ui/theme';
 const TABS: Record<string, { label: string; Icon: ComponentType<IconProps> }> = {
   index: { label: 'Catalog', Icon: CatalogIcon },
   shelves: { label: 'Shelves', Icon: ShelvesIcon },
-  lent: { label: 'Lent out', Icon: CheckedOutIcon },
+  lent: { label: 'Lent', Icon: CheckedOutIcon },
   desk: { label: 'Desk', Icon: DeskIcon },
 };
 
@@ -104,7 +104,8 @@ function Drawer({
         ]}
       >
         <View style={[styles.holder, { borderColor: p.brass, backgroundColor: '#F6EEDB' }]}>
-          <Text numberOfLines={1} style={[styles.holderText, { color: '#2A1F17' }]}>
+          {/* Scales with the system text size (capped so the cabinet still fits). */}
+          <Text numberOfLines={2} maxFontSizeMultiplier={1.6} style={[styles.holderText, { color: '#2A1F17' }]}>
             {label}
           </Text>
         </View>
@@ -112,7 +113,9 @@ function Drawer({
         <View style={[styles.pull, { backgroundColor: p.brass }]} />
         {badge ? (
           <View style={[styles.badge, { backgroundColor: p.stamp }]}>
-            <Text style={styles.badgeText}>{badge}</Text>
+            <Text maxFontSizeMultiplier={1.4} style={styles.badgeText}>
+              {badge}
+            </Text>
           </View>
         ) : null}
       </Animated.View>
@@ -166,7 +169,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   holder: { borderWidth: 1.5, borderRadius: 2, paddingHorizontal: 4, paddingVertical: 1, maxWidth: '92%' },
-  holderText: { fontFamily: fonts.typedBold, fontSize: 9, letterSpacing: 0.6, textTransform: 'uppercase' },
+  holderText: { fontFamily: fonts.typedBold, fontSize: 11, letterSpacing: 0.3, textTransform: 'uppercase', textAlign: 'center' },
   pull: { width: 18, height: 4, borderRadius: 2 },
   badge: {
     position: 'absolute',

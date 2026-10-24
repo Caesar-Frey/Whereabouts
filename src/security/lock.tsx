@@ -1,12 +1,13 @@
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as ScreenCapture from 'expo-screen-capture';
 import * as SecureStore from 'expo-secure-store';
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { AppState, Platform, StyleSheet, View } from 'react-native';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { AppState, Modal, Platform, StyleSheet, View } from 'react-native';
 
 import { KeyholeIcon } from '../ui/icons';
 import { LibraryButton, Room, T } from '../ui/components';
 import { usePalette } from '../ui/theme';
+import { getKeyMode, sealKey, unsealKey } from './keyVault';
 
 // Kept in the Keychain/Keystore (not the database) so it can be read before
 // anything is shown, and can't be flipped by editing app files.
@@ -23,6 +24,15 @@ export async function canUseDeviceAuth(): Promise<boolean> {
     LocalAuthentication.getEnrolledLevelAsync(),
   ]);
   return hardware && enrolled !== LocalAuthentication.SecurityLevel.NONE;
+}
+
+/** Sealing the key needs real biometrics: the OS won't accept a passcode for it. */
+export async function canSealWithBiometrics(): Promise<boolean> {
+  const [hardware, enrolled] = await Promise.all([
+    LocalAuthentication.hasHardwareAsync(),
+    LocalAuthentication.getEnrolledLevelAsync(),
+  ]);
+  return hardware && enrolled === LocalAuthentication.SecurityLevel.BIOMETRIC_STRONG;
 }
 
 /**
@@ -54,6 +64,10 @@ interface LockContextValue {
   enabled: boolean;
   /** Turning the lock on or off both require proving it's you. */
   setEnabled: (on: boolean) => Promise<boolean>;
+  /** The database key is released only by Face ID / fingerprint. */
+  sealed: boolean;
+  seal: (recoveryPassphrase: string) => Promise<void>;
+  unseal: () => Promise<void>;
 }
 
 const LockContext = createContext<LockContextValue | null>(null);
@@ -67,13 +81,19 @@ export function useAppLock() {
 type GateState = 'checking' | 'locked' | 'unlocked';
 
 /**
- * Renders nothing private until the app is unlocked, and covers the screen
- * whenever the app is not in the foreground so the app switcher snapshot is
- * blank.
+ * Renders nothing private until the app is first unlocked, and covers the
+ * screen whenever the app is not in the foreground so the app switcher
+ * snapshot is blank.
+ *
+ * Relocking after time away puts the lock screen *over* the app instead of
+ * unmounting it, so a half-written card survives. The screens underneath are
+ * hidden from touch and from screen readers until unlocked again.
  */
 export function LockGate({ children }: { children: ReactNode }) {
   const [enabled, setEnabledState] = useState(false);
+  const [sealed, setSealed] = useState(false);
   const [gate, setGate] = useState<GateState>(Platform.OS === 'web' ? 'unlocked' : 'checking');
+  const [everUnlocked, setEverUnlocked] = useState(Platform.OS === 'web');
   const [covered, setCovered] = useState(false);
   const [busy, setBusy] = useState(false);
   const backgroundedAt = useRef<number | null>(null);
@@ -82,7 +102,10 @@ export function LockGate({ children }: { children: ReactNode }) {
   const unlock = useCallback(async () => {
     setBusy(true);
     try {
-      if (await authenticate('Unlock Whereabouts')) setGate('unlocked');
+      if (await authenticate('Unlock Whereabouts')) {
+        setGate('unlocked');
+        setEverUnlocked(true);
+      }
     } finally {
       setBusy(false);
     }
@@ -91,13 +114,21 @@ export function LockGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     // The browser build is only a design preview and has no secure storage.
     if (Platform.OS === 'web') return;
-    SecureStore.getItemAsync(LOCK_KEY, STORE_OPTS)
-      .then((v) => {
-        const on = v === '1';
+    Promise.all([SecureStore.getItemAsync(LOCK_KEY, STORE_OPTS), getKeyMode()])
+      .then(([v, mode]) => {
+        const on = v === '1' || mode === 'sealed';
         enabledRef.current = on;
         setEnabledState(on);
-        setGate(on ? 'locked' : 'unlocked');
-        if (on) unlock();
+        setSealed(mode === 'sealed');
+        // A sealed key asks for Face ID itself when the catalog opens, so
+        // don't ask twice.
+        if (on && mode !== 'sealed') {
+          setGate('locked');
+          unlock();
+        } else {
+          setGate('unlocked');
+          setEverUnlocked(true);
+        }
       })
       // If the setting can't be read, fail closed only if it might be on.
       .catch(() => setGate('locked'));
@@ -127,26 +158,73 @@ export function LockGate({ children }: { children: ReactNode }) {
     setNativePrivacy(enabled).catch(() => {});
   }, [enabled]);
 
-  const setEnabled = useCallback(async (on: boolean) => {
-    if (on && !(await canUseDeviceAuth())) return false;
-    if (!(await authenticate(on ? 'Turn on app lock' : 'Turn off app lock'))) return false;
-    if (on) await SecureStore.setItemAsync(LOCK_KEY, '1', STORE_OPTS);
-    else await SecureStore.deleteItemAsync(LOCK_KEY, STORE_OPTS);
-    enabledRef.current = on;
-    setEnabledState(on);
-    return true;
+  const setEnabled = useCallback(
+    async (on: boolean) => {
+      if (on && !(await canUseDeviceAuth())) return false;
+      if (!on && sealed) {
+        // Unsealing asks for Face ID itself, which also proves it's you.
+        await unsealKey();
+        setSealed(false);
+      } else if (!(await authenticate(on ? 'Turn on app lock' : 'Turn off app lock'))) {
+        return false;
+      }
+      if (on) await SecureStore.setItemAsync(LOCK_KEY, '1', STORE_OPTS);
+      else await SecureStore.deleteItemAsync(LOCK_KEY, STORE_OPTS);
+      enabledRef.current = on;
+      setEnabledState(on);
+      return true;
+    },
+    [sealed],
+  );
+
+  const seal = useCallback(async (recoveryPassphrase: string) => {
+    await sealKey(recoveryPassphrase);
+    await SecureStore.setItemAsync(LOCK_KEY, '1', STORE_OPTS);
+    enabledRef.current = true;
+    setEnabledState(true);
+    setSealed(true);
   }, []);
 
+  const unseal = useCallback(async () => {
+    await unsealKey();
+    setSealed(false);
+  }, []);
+
+  const value = useMemo(() => ({ enabled, setEnabled, sealed, seal, unseal }), [enabled, setEnabled, sealed, seal, unseal]);
+  const locked = gate !== 'unlocked';
   return (
-    <LockContext.Provider value={{ enabled, setEnabled }}>
-      {gate === 'unlocked' ? children : null}
-      {gate !== 'unlocked' && <LockedScreen checking={gate === 'checking'} busy={busy} onUnlock={unlock} />}
-      {gate === 'unlocked' && covered && <PrivacyCover />}
+    <LockContext.Provider value={value}>
+      {everUnlocked && (
+        <View
+          style={StyleSheet.absoluteFill}
+          pointerEvents={locked ? 'none' : 'auto'}
+          accessibilityElementsHidden={locked}
+          importantForAccessibility={locked ? 'no-hide-descendants' : 'auto'}
+        >
+          {children}
+        </View>
+      )}
+      {/* A Modal, so it also covers screens presented as native modals
+          (like a half-written card). Back does nothing while locked. */}
+      <Modal visible={locked} animationType="fade" presentationStyle="fullScreen" onRequestClose={() => {}}>
+        <LockedScreen checking={gate === 'checking'} busy={busy} onUnlock={unlock} />
+      </Modal>
+      {!locked && covered && <PrivacyCover />}
     </LockContext.Provider>
   );
 }
 
-function LockedScreen({ checking, busy, onUnlock }: { checking: boolean; busy: boolean; onUnlock: () => void }) {
+export function LockedScreen({
+  checking,
+  busy,
+  onUnlock,
+  children,
+}: {
+  checking: boolean;
+  busy: boolean;
+  onUnlock: () => void;
+  children?: ReactNode;
+}) {
   const p = usePalette();
   return (
     <Room style={styles.center}>
@@ -160,6 +238,7 @@ function LockedScreen({ checking, busy, onUnlock }: { checking: boolean; busy: b
         Unlock to see where your things are.
       </T>
       {!checking && <LibraryButton label="Unlock" tone="lamp" disabled={busy} onPress={onUnlock} />}
+      {children}
     </Room>
   );
 }

@@ -1,16 +1,11 @@
-import * as Crypto from 'expo-crypto';
-import * as SecureStore from 'expo-secure-store';
 import * as SQLite from 'expo-sqlite';
+
+import { forgetKeys, newKey, readKey, storeNewKey } from '../security/keyVault';
 
 import { migrate } from './schema';
 import type { Db } from './types';
 
 const DB_NAME = 'whereabouts.db';
-const KEY_NAME = 'whereabouts.dbkey.v1';
-// The key never leaves this device: no iCloud Keychain sync, no backups.
-const KEY_OPTIONS: SecureStore.SecureStoreOptions = {
-  keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-};
 
 /** The database exists but can't be decrypted with the stored key. */
 export class DatabaseUnreadableError extends Error {
@@ -19,10 +14,6 @@ export class DatabaseUnreadableError extends Error {
     this.name = 'DatabaseUnreadableError';
     this.cause = cause;
   }
-}
-
-function toHex(bytes: Uint8Array): string {
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 function adapt(db: SQLite.SQLiteDatabase): Db {
@@ -38,12 +29,13 @@ function adapt(db: SQLite.SQLiteDatabase): Db {
 
 /**
  * Opens the SQLCipher-encrypted database, creating it and its 256-bit key on
- * first launch. The raw key lives only in the iOS Keychain / Android Keystore.
+ * first launch. The raw key lives only in the iOS Keychain / Android Keystore
+ * (never synced or backed up), optionally sealed behind biometrics.
  */
 export async function openEncryptedDatabase(): Promise<Db> {
-  let key = await SecureStore.getItemAsync(KEY_NAME, KEY_OPTIONS);
+  let key = await readKey();
   const isNewKey = key === null;
-  if (!key) key = toHex(await Crypto.getRandomBytesAsync(32));
+  if (!key) key = await newKey();
   if (!/^[0-9a-f]{64}$/.test(key)) throw new DatabaseUnreadableError(new Error('Malformed key'));
 
   const raw = await SQLite.openDatabaseAsync(DB_NAME);
@@ -71,7 +63,7 @@ export async function openEncryptedDatabase(): Promise<Db> {
   }
 
   // Only remember a fresh key once it has unlocked (i.e. created) the file.
-  if (isNewKey) await SecureStore.setItemAsync(KEY_NAME, key, KEY_OPTIONS);
+  if (isNewKey) await storeNewKey(key);
 
   await raw.execAsync('PRAGMA journal_mode = WAL; PRAGMA secure_delete = ON;');
   const db = adapt(raw);
@@ -84,5 +76,5 @@ export async function eraseAllData(): Promise<void> {
   // If the file can't be removed, keep the key: a fresh key would only meet
   // the same unreadable file again.
   await SQLite.deleteDatabaseAsync(DB_NAME);
-  await SecureStore.deleteItemAsync(KEY_NAME, KEY_OPTIONS);
+  await forgetKeys();
 }

@@ -1,5 +1,6 @@
 import type { Item, Location } from '../db/types';
 import type { LocationIndex } from '../lib/locations';
+import { fingerprintText, type Fingerprint } from '../boxes/fingerprint';
 import { createSearchIndex, type SearchIndex } from './fuzzy';
 
 export type CatalogHit = { kind: 'item'; item: Item } | { kind: 'place'; place: Location };
@@ -8,7 +9,13 @@ export type CatalogHit = { kind: 'item'; item: Item } | { kind: 'place'; place: 
  * One index over things and places. Things match on their name first, then
  * tags, the place they're in, who has them, and notes.
  */
-export function buildCatalog(items: Item[], locations: Location[], index: LocationIndex): SearchIndex<CatalogHit> {
+export function buildCatalog(
+  items: Item[],
+  locations: Location[],
+  index: LocationIndex,
+  /** Box fingerprints, so words on a handwritten label find the box. */
+  boxes?: Map<string, { fp: Fingerprint | null }>,
+): SearchIndex<CatalogHit> {
   return createSearchIndex<CatalogHit>([
     ...items.map((item) => ({
       value: { kind: 'item' as const, item },
@@ -27,6 +34,7 @@ export function buildCatalog(items: Item[], locations: Location[], index: Locati
       fields: [
         { text: place.name, weight: 0.95 },
         { text: index.pathNames(place.parentId ?? null).join(' '), weight: 0.3 },
+        { text: fingerprintText(boxes?.get(place.id)?.fp ?? null), weight: 0.7 },
       ],
     })),
   ]);

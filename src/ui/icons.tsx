@@ -177,3 +177,72 @@ export function PigeonholeIcon({ size = 24, color, accent, strokeWidth = 1.6 }: 
     </Svg>
   );
 }
+
+/** An archive box with a brass label holder and lid. */
+export function ArchiveBoxIcon({ size = 24, color, accent, strokeWidth = 1.6 }: IconProps) {
+  return (
+    <Svg {...base(size)}>
+      <Rect x={2.5} y={4} width={19} height={5} rx={1} stroke={color} strokeWidth={strokeWidth} />
+      <Path d="M4 9v10a1.5 1.5 0 0 0 1.5 1.5h13A1.5 1.5 0 0 0 20 19V9" stroke={color} strokeWidth={strokeWidth} strokeLinejoin="round" />
+      <Rect x={8.5} y={12} width={7} height={3.5} rx={0.6} stroke={color} strokeWidth={strokeWidth} fill={accent ?? 'none'} />
+    </Svg>
+  );
+}
+
+/** A brass desk bell. */
+export function BellIcon({ size = 24, color, accent, strokeWidth = 1.6 }: IconProps) {
+  return (
+    <Svg {...base(size)}>
+      <Path d="M4 17a8 8 0 0 1 16 0z" stroke={color} strokeWidth={strokeWidth} strokeLinejoin="round" fill={accent ?? 'none'} />
+      <Path d="M2.5 19.5h19M12 9V7M10.5 6.5h3" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+/** A folding plate camera. */
+export function CameraIcon({ size = 24, color, accent, strokeWidth = 1.6 }: IconProps) {
+  return (
+    <Svg {...base(size)}>
+      <Path d="M3 8.5A1.5 1.5 0 0 1 4.5 7h3l1.5-2.5h6L16.5 7h3A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z" stroke={color} strokeWidth={strokeWidth} strokeLinejoin="round" />
+      <Circle cx={12} cy={13} r={3.6} stroke={color} strokeWidth={strokeWidth} fill={accent ?? 'none'} />
+    </Svg>
+  );
+}
+
+/** An old broadcast microphone: grilled capsule in a yoke on a short stand. */
+export function MicrophoneIcon({ size = 24, color, strokeWidth = 1.7 }: IconProps) {
+  return (
+    <Svg {...base(size)}>
+      <Rect x={8.5} y={2.5} width={7} height={11} rx={3.5} stroke={color} strokeWidth={strokeWidth} />
+      <Path d="M8.5 6.5h2.5M8.5 9.5h2.5M13 6.5h2.5M13 9.5h2.5" stroke={color} strokeWidth={strokeWidth * 0.8} strokeLinecap="round" />
+      <Path d="M5.5 10.5a6.5 6.5 0 0 0 13 0" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+      <Path d="M12 17v3.5M8.5 21h7" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+/** A reading owl on a branch: the library assistant. */
+export function OwlIcon({ size = 24, color, accent, strokeWidth = 1.6 }: IconProps) {
+  return (
+    <Svg {...base(size)}>
+      <Path
+        d="M6.5 7.5L6 3.5l3 2.2c1.8-.6 4.2-.6 6 0l3-2.2-.5 4c1 1.2 1.5 2.7 1.5 4.5v2.5c0 3.6-3 6.5-7 6.5s-7-2.9-7-6.5V12c0-1.8.5-3.3 1.5-4.5z"
+        stroke={color}
+        strokeWidth={strokeWidth}
+        strokeLinejoin="round"
+      />
+      <Circle cx={9.5} cy={10.5} r={2} stroke={color} strokeWidth={strokeWidth} fill={accent ?? 'none'} />
+      <Circle cx={14.5} cy={10.5} r={2} stroke={color} strokeWidth={strokeWidth} fill={accent ?? 'none'} />
+      <Path d="M11.2 13.2l.8 1.2.8-1.2M9.5 17c.8.5 1.6.7 2.5.7s1.7-.2 2.5-.7M3.5 21h17" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+/** A pencilled tick and spark: "suggested by the assistant". */
+export function SparkIcon({ size = 24, color, strokeWidth = 1.6 }: IconProps) {
+  return (
+    <Svg {...base(size)}>
+      <Path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M18 6l-2.5 2.5M8.5 15.5L6 18" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+    </Svg>
+  );
+}

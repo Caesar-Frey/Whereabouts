@@ -4,12 +4,16 @@ import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { askForPhoto, PhotoPlate, useFullPhoto } from '@/components/PhotoPlate';
+import { tagList, withTag } from '@/ai/text';
+import { SuggestSubjects } from '@/components/SuggestSubjects';
 import type { HistoryEvent } from '@/db/types';
 import { callNumber, dueState, relativeDays, shortDate, stampDate } from '@/lib/format';
 import { useData, useItem, useRecentPlaces } from '@/state/data';
 import { BrassPlate, IndexCard, LibraryButton, Room, SectionLabel, SpineChip, Stamp, T, TypedInput } from '@/ui/components';
-import { BinIcon, CheckedOutIcon, PencilIcon, ReshelveIcon, StampIcon } from '@/ui/icons';
+import { BinIcon, CameraIcon, CheckedOutIcon, PencilIcon, ReshelveIcon, StampIcon } from '@/ui/icons';
 import { fonts, usePalette } from '@/ui/theme';
+import { useToast } from '@/ui/toast';
 
 export default function ItemScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -21,6 +25,8 @@ export default function ItemScreen() {
   const [history, setHistory] = useState<HistoryEvent[]>([]);
   const [stamp, setStamp] = useState<{ text: string; sub?: string; color: string; key: number } | null>(null);
   const [editing, setEditing] = useState(false);
+  const toast = useToast();
+  const cover = useFullPhoto(item?.photoIds[0]);
 
   useEffect(() => {
     if (!item) return;
@@ -42,6 +48,11 @@ export default function ItemScreen() {
 
   const path = index.pathNames(item.locationId);
   const loan = item.activeLoan;
+  const addPhoto = async () => {
+    const ph = await askForPhoto();
+    if (ph) await actions.addPhoto({ itemId: item.id }, ph).catch(showError);
+  };
+  const openPhoto = (photoId: string) => router.push({ pathname: '/photo/[id]', params: { id: photoId } });
   const due = loan ? dueState(loan.dueAt) : 'none';
   const moveTargets = recent
     .filter((l) => l.id !== item.locationId && !index.isWithin(item.locationId, l.id))
@@ -51,7 +62,12 @@ export default function ItemScreen() {
 
   const moveTo = async (locationId: string) => {
     try {
-      if (await actions.moveItem(item.id, { locationId })) flash('Re-shelved', p.lampText, index.byId.get(locationId)?.name);
+      const moveId = await actions.moveItem(item.id, { locationId });
+      if (moveId) {
+        const name = index.byId.get(locationId)?.name;
+        flash('Re-shelved', p.lampText, name);
+        toast({ message: `Moved to ${name}`, undo: () => actions.undoMove(moveId).then(() => setStamp(null)) });
+      }
     } catch (e) {
       showError(e);
     }
@@ -59,26 +75,25 @@ export default function ItemScreen() {
 
   const markReturned = async () => {
     try {
-      await actions.returnItem(item.id);
+      const loanId = await actions.returnItem(item.id);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       flash('Returned', p.stampReturned, todayStamp());
+      if (loanId) toast({ message: `Back from ${loan?.person}`, undo: () => actions.undoReturn(loanId).then(() => setStamp(null)) });
     } catch (e) {
       showError(e);
     }
   };
 
-  const withdraw = () =>
-    Alert.alert('Withdraw this card?', `“${item.name}” and its history will be deleted.`, [
-      { text: 'Keep', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          router.back();
-          await actions.deleteItem(item.id).catch(showError);
-        },
-      },
-    ]);
+  // No "are you sure?": the card can be put back from the notice.
+  const withdraw = async () => {
+    router.back();
+    try {
+      const snapshot = await actions.deleteItem(item.id);
+      if (snapshot) toast({ message: `Withdrew “${item.name}”`, undo: () => actions.restoreItem(snapshot) });
+    } catch (e) {
+      showError(e);
+    }
+  };
 
   return (
     <Room>
@@ -106,13 +121,32 @@ export default function ItemScreen() {
             {editing ? (
               <EditFields
                 initial={{ name: item.name, tags: item.tags.join(', '), notes: item.notes ?? '' }}
+                photo={cover?.data ?? item.cover ?? null}
                 onDone={async (v) => {
-                  await actions.updateItem(item.id, { name: v.name, notes: v.notes, tags: v.tags.split(',') });
+                  const tags = tagList(v.tags);
+                  await actions.updateItem(item.id, { name: v.name, notes: v.notes, tags, aiTags: v.aiTags.filter((t) => tags.includes(t)) });
                   setEditing(false);
                 }}
               />
             ) : (
               <>
+                {item.photoIds.length > 0 && (
+                  <View style={{ gap: 12, paddingVertical: 6 }}>
+                    <PhotoPlate
+                      base64={cover?.data ?? item.cover}
+                      aspect={cover?.aspect ?? 4 / 3}
+                      onPress={() => openPhoto(item.photoIds[0]!)}
+                      accessibilityLabel={`Photo of ${item.name}`}
+                    />
+                    {item.photoIds.length > 1 && (
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, padding: 4 }}>
+                        {item.photoIds.slice(1).map((pid, i) => (
+                          <Thumb key={pid} id={pid} tilt={i % 2 ? 1.5 : -1.5} onPress={() => openPhoto(pid)} />
+                        ))}
+                      </ScrollView>
+                    )}
+                  </View>
+                )}
                 <T variant="title">{item.name}</T>
                 {loan ? (
                   <View style={{ gap: 10 }}>
@@ -159,6 +193,12 @@ export default function ItemScreen() {
                   </View>
                 )}
                 {item.notes ? <T variant="italic">{item.notes}</T> : null}
+                <Pressable onPress={addPhoto} accessibilityRole="button" hitSlop={8} style={styles.addPhoto}>
+                  <CameraIcon size={16} color={p.leatherText} />
+                  <T variant="small" color={p.leatherText}>
+                    {item.photoIds.length ? 'Add another photo' : 'Add a photo'}
+                  </T>
+                </Pressable>
               </>
             )}
           </View>
@@ -222,23 +262,37 @@ export default function ItemScreen() {
 
 const todayStamp = () => stampDate(Date.now());
 
+function Thumb({ id, tilt, onPress }: { id: string; tilt: number; onPress: () => void }) {
+  return <PhotoPlate base64={null} photoId={id} aspect={1} style={{ width: 84 }} tilt={tilt} onPress={onPress} />;
+}
+
 const showError = (e: unknown) =>
   Alert.alert("That didn't save", e instanceof Error ? e.message : String(e));
 
 function EditFields({
   initial,
+  photo,
   onDone,
 }: {
   initial: { name: string; tags: string; notes: string };
-  onDone: (v: { name: string; tags: string; notes: string }) => Promise<void>;
+  /** Cover photo (base64 JPEG) for the assistant to look at. */
+  photo: string | null;
+  onDone: (v: { name: string; tags: string; notes: string; aiTags: string[] }) => Promise<void>;
 }) {
   const p = usePalette();
-  const [v, setV] = useState(initial);
+  const [v, setV] = useState({ ...initial, aiTags: [] as string[] });
   const [error, setError] = useState<string | null>(null);
   return (
     <View style={{ gap: 16 }}>
       <TypedInput big value={v.name} onChangeText={(name) => setV({ ...v, name })} autoFocus accessibilityLabel="Name" />
       <TypedInput label="Subjects (comma separated)" value={v.tags} onChangeText={(tags) => setV({ ...v, tags })} autoCapitalize="none" />
+      <SuggestSubjects
+        name={v.name}
+        notes={v.notes}
+        photo={photo ? { base64: photo } : null}
+        tags={v.tags}
+        onTag={(t) => setV((cur) => ({ ...cur, tags: withTag(cur.tags, t), aiTags: [...cur.aiTags, t] }))}
+      />
       <TypedInput label="Notes" value={v.notes} onChangeText={(notes) => setV({ ...v, notes })} multiline />
       {error && (
         <T variant="small" color={p.stamp}>
@@ -302,6 +356,7 @@ const styles = StyleSheet.create({
   pathWrap: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' },
   pathPart: { flexDirection: 'row', alignItems: 'center' },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  addPhoto: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start' },
   row: { flexDirection: 'row', gap: 10 },
   slip: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 2, padding: 14 },
   slipRow: { flexDirection: 'row', gap: 12, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth },

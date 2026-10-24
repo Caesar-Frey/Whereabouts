@@ -11,12 +11,17 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { AssistantProvider } from '@/ai/assistant';
 import { DataGate } from '@/components/DataGate';
+import { ReminderSync } from '@/components/ReminderSync';
 import { LockGate } from '@/security/lock';
 import { DataProvider } from '@/state/data';
 import { fonts, usePalette } from '@/ui/theme';
+import { ToastProvider } from '@/ui/toast';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
+// The drawer fades into the reading room rather than snapping away.
+SplashScreen.setOptions({ fade: true, duration: 350 });
 
 export default function RootLayout() {
   const p = usePalette();
@@ -49,6 +54,9 @@ export default function RootLayout() {
         <LockGate>
           <DataProvider>
             <DataGate>
+              <AssistantProvider>
+              <ToastProvider>
+              <ReminderSync />
               <Stack
                 screenOptions={{
                   headerStyle: { backgroundColor: p.room },
@@ -65,7 +73,13 @@ export default function RootLayout() {
                 <Stack.Screen name="place/[id]" options={{ title: '' }} />
                 <Stack.Screen name="move/[id]" options={{ presentation: 'modal', title: 'Re-shelve' }} />
                 <Stack.Screen name="lend/[id]" options={{ presentation: 'modal', title: 'Check out' }} />
+                <Stack.Screen name="archive" options={{ presentation: 'modal', title: 'Backup' }} />
+                <Stack.Screen name="photo/[id]" options={{ presentation: 'modal', title: 'Photo' }} />
+                <Stack.Screen name="identify" options={{ presentation: 'modal', title: 'Which box is this?' }} />
+                <Stack.Screen name="seal" options={{ presentation: 'modal', title: 'Seal the catalog' }} />
               </Stack>
+              </ToastProvider>
+              </AssistantProvider>
             </DataGate>
           </DataProvider>
         </LockGate>
