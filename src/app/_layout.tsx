@@ -41,7 +41,7 @@ export default function RootLayout() {
       <ThemeProvider
         value={{
           dark: p.scheme === 'dark',
-          colors: { primary: p.leather, background: p.room, card: p.room, text: p.ink, border: p.cardEdge, notification: p.stamp },
+          colors: { primary: p.scheme === 'dark' ? p.brass : p.leather, background: p.room, card: p.room, text: p.ink, border: p.cardEdge, notification: p.stamp },
           fonts: { regular: font(fonts.serif), medium: font(fonts.serif), bold: font(fonts.display), heavy: font(fonts.display) },
         }}
       >

@@ -185,6 +185,9 @@ export function createRepo(db: Db, deps: RepoDeps) {
         t,
         id,
       ]);
+      // Rename the doomed place out of the way first, so a child with the
+      // same name ("Box › Box") can take its slot.
+      await db.runAsync('UPDATE locations SET name = ? WHERE id = ?', [`\u0000deleted:${id}`, id]);
       // Re-parent children one by one; a name clash with a sibling of the
       // deleted place gets merged into that sibling.
       const children = await db.getAllAsync<LocationRow>('SELECT * FROM locations WHERE parent_id = ?', [id]);
@@ -230,31 +233,45 @@ export function createRepo(db: Db, deps: RepoDeps) {
     await db.runAsync('DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM item_tags)');
   }
 
+  /**
+   * Adds a thing in one transaction: the place path (created as needed), the
+   * item and, if it starts out lent, its loan. Either all of it is saved or
+   * none of it, so a failed save can be retried without leaving duplicates.
+   */
   async function addItem(input: {
     name: string;
-    locationId: string | null;
+    /** An existing place, or */
+    locationId?: string | null;
+    /** a path to find or create, root first. */
+    placeNames?: string[];
     notes?: string | null;
     tags?: string[];
+    lendTo?: { person: string; dueAt?: number | null };
   }): Promise<string> {
     const name = cleanName(input.name, 'Item');
     const notes = cleanNotes(input.notes);
+    const person = input.lendTo ? cleanName(input.lendTo.person, 'Person') : null;
     const id = uuid();
     const t = now();
-    const toPath = await pathString(input.locationId);
     await db.withTransactionAsync(async () => {
+      const locationId = input.placeNames?.length
+        ? await ensureLocationPath(input.placeNames)
+        : (input.locationId ?? null);
+      const toPath = await pathString(locationId);
       await db.runAsync(
         'INSERT INTO items (id, name, notes, location_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-        [id, name, notes, input.locationId, t, t],
+        [id, name, notes, locationId, t, t],
       );
-      if (input.locationId) {
+      if (locationId) {
         await db.runAsync(
           `INSERT INTO moves (id, item_id, from_location_id, to_location_id, from_path, to_path, moved_at)
            VALUES (?, ?, NULL, ?, NULL, ?, ?)`,
-          [uuid(), id, input.locationId, toPath, t],
+          [uuid(), id, locationId, toPath, t],
         );
       }
       if (input.tags?.length) await setTags(id, input.tags);
-      await touchLocation(input.locationId);
+      await touchLocation(locationId);
+      if (person) await insertLoan(id, person, input.lendTo?.dueAt ?? null, null, t);
     });
     return id;
   }
@@ -303,23 +320,34 @@ export function createRepo(db: Db, deps: RepoDeps) {
     });
   }
 
+  async function insertLoan(itemId: string, person: string, dueAt: number | null, notes: string | null, t: number) {
+    const id = uuid();
+    await db.runAsync('INSERT INTO loans (id, item_id, person, lent_at, due_at, notes) VALUES (?, ?, ?, ?, ?, ?)', [
+      id,
+      itemId,
+      person,
+      t,
+      dueAt,
+      notes,
+    ]);
+    return id;
+  }
+
   async function lendItem(
     itemId: string,
     input: { person: string; dueAt?: number | null; notes?: string | null },
   ): Promise<string> {
     const person = cleanName(input.person, 'Person');
+    const notes = cleanNotes(input.notes);
     const active = await db.getFirstAsync<LoanRow>(
       'SELECT * FROM loans WHERE item_id = ? AND returned_at IS NULL',
       [itemId],
     );
     if (active) throw new Error(`Already lent to ${active.person}`);
-    const id = uuid();
     const t = now();
+    let id = '';
     await db.withTransactionAsync(async () => {
-      await db.runAsync(
-        'INSERT INTO loans (id, item_id, person, lent_at, due_at, notes) VALUES (?, ?, ?, ?, ?, ?)',
-        [id, itemId, person, t, input.dueAt ?? null, cleanNotes(input.notes)],
-      );
+      id = await insertLoan(itemId, person, input.dueAt ?? null, notes, t);
       await db.runAsync('UPDATE items SET updated_at = ? WHERE id = ?', [t, itemId]);
     });
     return id;

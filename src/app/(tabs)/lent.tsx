@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import { useMemo } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { Item } from '@/db/types';
@@ -81,7 +81,7 @@ export default function LentScreen() {
                       <T variant="body" numberOfLines={1}>
                         {item.name}
                       </T>
-                      <T variant="small" color={state === 'overdue' ? p.stamp : state === 'soon' ? p.leather : p.inkSoft}>
+                      <T variant="small" color={state === 'overdue' ? p.stamp : state === 'soon' ? p.leatherText : p.inkSoft}>
                         {loan.dueAt
                           ? state === 'overdue'
                             ? `Overdue, was due ${relativeDays(loan.dueAt)}`
@@ -93,9 +93,14 @@ export default function LentScreen() {
                       compact
                       tone="lamp"
                       label="Back"
+                      accessibilityLabel={`${item.name} is back`}
                       onPress={async () => {
-                        await actions.returnItem(item.id);
-                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+                        try {
+                          await actions.returnItem(item.id);
+                          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+                        } catch (e) {
+                          Alert.alert("That didn't save", e instanceof Error ? e.message : String(e));
+                        }
                       }}
                     />
                   </View>

@@ -32,6 +32,9 @@ export function memoryDb(): Db {
         throw e;
       }
     },
+    async closeAsync() {
+      raw.close();
+    },
   };
 }
 

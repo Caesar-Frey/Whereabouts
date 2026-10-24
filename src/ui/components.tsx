@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
-import { useAnimatedValue } from './animated';
+import { useAnimatedValue, useReducedMotion } from './animated';
 import { fonts, usePalette, type Palette } from './theme';
 
 /* ------------------------------------------------------------------ text */
@@ -81,10 +81,15 @@ interface IndexCardProps extends Omit<PressableProps, 'style' | 'children'> {
 export function IndexCard({ children, style, punched = true, ruled = true, enterIndex, onPress, ...rest }: IndexCardProps) {
   const p = usePalette();
   const lift = useAnimatedValue(0);
-  const enter = useAnimatedValue(enterIndex === undefined ? 1 : 0);
+  const still = useReducedMotion();
+  const enter = useAnimatedValue(enterIndex === undefined || still ? 1 : 0);
 
   useEffect(() => {
     if (enterIndex === undefined) return;
+    if (still) {
+      enter.setValue(1);
+      return;
+    }
     Animated.timing(enter, {
       toValue: 1,
       duration: 320,
@@ -92,7 +97,7 @@ export function IndexCard({ children, style, punched = true, ruled = true, enter
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
-  }, [enter, enterIndex]);
+  }, [enter, enterIndex, still]);
 
   const press = (to: number) =>
     Animated.spring(lift, { toValue: to, useNativeDriver: true, speed: 40, bounciness: 6 }).start();
@@ -287,16 +292,23 @@ export function Stamp({
   angle?: number;
   animate?: boolean;
 }) {
-  const v = useAnimatedValue(animate ? 0 : 1);
+  const still = useReducedMotion();
+  const v = useAnimatedValue(animate && !still ? 0 : 1);
   useEffect(() => {
     if (!animate) return;
+    if (still) {
+      // Keep the haptic thud, skip the slam-down.
+      v.setValue(1);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
+      return;
+    }
     Animated.sequence([
       Animated.timing(v, { toValue: 0.85, duration: 140, easing: Easing.in(Easing.quad), useNativeDriver: true }),
       Animated.spring(v, { toValue: 1, useNativeDriver: true, speed: 30, bounciness: 14 }),
     ]).start();
     const t = setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {}), 140);
     return () => clearTimeout(t);
-  }, [animate, v]);
+  }, [animate, v, still]);
   return (
     <Animated.View
       accessibilityLabel={sub ? `${text}, ${sub}` : text}

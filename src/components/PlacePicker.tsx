@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useMemo, type Ref } from 'react';
+import { Pressable, ScrollView, StyleSheet, View, type TextInputInstance } from 'react-native';
 
 import { parsePathInput, PATH_SEPARATOR } from '@/lib/locations';
 import { createSearchIndex } from '@/search/fuzzy';
@@ -18,12 +18,14 @@ export function PlacePicker({
   label = 'Where is it?',
   autoFocus,
   onSubmit,
+  inputRef,
 }: {
   value: string;
   onChange: (path: string) => void;
   label?: string;
   autoFocus?: boolean;
   onSubmit?: () => void;
+  inputRef?: Ref<TextInputInstance>;
 }) {
   const p = usePalette();
   const { locations, index } = useData();
@@ -74,6 +76,7 @@ export function PlacePicker({
   return (
     <View style={{ gap: 10 }}>
       <TypedInput
+        ref={inputRef}
         label={label}
         value={value}
         onChangeText={onChange}
@@ -90,7 +93,7 @@ export function PlacePicker({
           {names.map((n, i) => (
             <View key={`${i}-${n}`} style={styles.pathPart}>
               {i > 0 && <T variant="small"> › </T>}
-              <T variant="small" color={i < existing ? p.lamp : p.leather}>
+              <T variant="small" color={i < existing ? p.lampText : p.leatherText}>
                 {n}
                 {i >= existing ? ' (new)' : ''}
               </T>

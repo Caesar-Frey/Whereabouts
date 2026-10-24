@@ -10,6 +10,7 @@ export function DataGate({ children }: { children: ReactNode }) {
   const { status, retry } = useDataStatus();
   const p = usePalette();
   const [erasing, setErasing] = useState(false);
+  const [eraseError, setEraseError] = useState<string | null>(null);
 
   if (status.state === 'ready') return <>{children}</>;
 
@@ -36,9 +37,15 @@ export function DataGate({ children }: { children: ReactNode }) {
           style: 'destructive',
           onPress: async () => {
             setErasing(true);
-            await eraseAllData();
-            setErasing(false);
-            retry();
+            setEraseError(null);
+            try {
+              await eraseAllData();
+              retry();
+            } catch {
+              setEraseError("Couldn't erase the old catalog. Restart the phone and try again.");
+            } finally {
+              setErasing(false);
+            }
           },
         },
       ],
@@ -53,6 +60,11 @@ export function DataGate({ children }: { children: ReactNode }) {
       <T variant="small" style={{ textAlign: 'center' }}>
         {status.error.message}
       </T>
+      {eraseError && (
+        <T variant="small" color={p.stamp} style={{ textAlign: 'center' }}>
+          {eraseError}
+        </T>
+      )}
       <View style={{ gap: 12, alignSelf: 'stretch' }}>
         <LibraryButton label="Try again" tone="lamp" onPress={retry} />
         {unreadable && <LibraryButton label="Erase and start over" tone="ghost" disabled={erasing} onPress={confirmErase} />}
