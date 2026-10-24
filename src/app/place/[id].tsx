@@ -1,0 +1,195 @@
+import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { useMemo, useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { ItemCard } from '@/components/ItemCard';
+import { callNumber } from '@/lib/format';
+import { useData } from '@/state/data';
+import { LibraryButton, Room, SectionLabel, SpineChip, Stamp, T, TypedInput } from '@/ui/components';
+import { BinIcon, NewCardIcon, PencilIcon } from '@/ui/icons';
+import { usePalette } from '@/ui/theme';
+
+export default function PlaceScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const p = usePalette();
+  const insets = useSafeAreaInsets();
+  const { items, index, actions } = useData();
+  const place = id ? index.byId.get(id) : undefined;
+  const [mode, setMode] = useState<'view' | 'rename' | 'inside'>('view');
+  const [text, setText] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const here = useMemo(() => items.filter((i) => i.locationId === id), [items, id]);
+  const nestedCount = useMemo(() => {
+    if (!id) return 0;
+    const ids = index.subtreeIds(id);
+    ids.delete(id);
+    return items.filter((i) => i.locationId && ids.has(i.locationId)).length;
+  }, [items, index, id]);
+
+  if (!place || !id) {
+    return (
+      <Room style={styles.center}>
+        <Stamp text="Removed" color={p.inkSoft} animate={false} />
+      </Room>
+    );
+  }
+
+  const path = index.pathNames(id);
+  const kids = index.children.get(id) ?? [];
+
+  const submit = async () => {
+    try {
+      if (mode === 'rename') await actions.renamePlace(id, text);
+      else await actions.addPlace(text, id);
+      setMode('view');
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const remove = () =>
+    Alert.alert(
+      `Remove “${place.name}”?`,
+      place.parentId
+        ? `Everything inside moves up to “${index.byId.get(place.parentId)?.name}”. Nothing is deleted.`
+        : 'Everything inside stays in your catalog. Things directly here become unshelved.',
+      [
+        { text: 'Keep', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            router.back();
+            await actions.deletePlace(id);
+          },
+        },
+      ],
+    );
+
+  return (
+    <Room>
+      <Stack.Screen options={{ title: place.name }} />
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 18, paddingBottom: insets.bottom + 32, gap: 16 }}>
+        <View style={{ gap: 4 }}>
+          <T variant="small" color={p.headRule} style={{ letterSpacing: 1.5 }}>
+            {callNumber(path)}
+          </T>
+          <View style={styles.crumbs}>
+            {path.map((n, i) => {
+              const ancestorId = ancestorAt(index, id, path.length - 1 - i);
+              const last = i === path.length - 1;
+              return (
+                <View key={i} style={styles.crumb}>
+                  {i > 0 && <T variant="typed" color={p.brass}> › </T>}
+                  <Pressable
+                    disabled={last || !ancestorId}
+                    onPress={() => ancestorId && router.push({ pathname: '/place/[id]', params: { id: ancestorId } })}
+                  >
+                    <T variant="typed" color={last ? p.ink : p.leather}>
+                      {n}
+                    </T>
+                  </Pressable>
+                </View>
+              );
+            })}
+          </View>
+          <T variant="small">
+            {here.length} here{nestedCount ? ` · ${nestedCount} in nested places` : ''}
+          </T>
+        </View>
+
+        <View style={styles.row}>
+          <LibraryButton
+            style={{ flex: 1 }}
+            label="Add a thing here"
+            icon={(c) => <NewCardIcon size={20} color={c} />}
+            onPress={() => router.push({ pathname: '/add', params: { place: index.pathString(id) } })}
+          />
+        </View>
+
+        {mode !== 'view' ? (
+          <View style={{ gap: 12 }}>
+            <TypedInput
+              label={mode === 'rename' ? 'New name' : `New place inside ${place.name}`}
+              value={text}
+              onChangeText={setText}
+              autoFocus
+              onSubmitEditing={submit}
+            />
+            {error && (
+              <T variant="small" color={p.stamp}>
+                {error}
+              </T>
+            )}
+            <View style={styles.row}>
+              <LibraryButton style={{ flex: 1 }} compact tone="ghost" label="Cancel" onPress={() => setMode('view')} />
+              <LibraryButton style={{ flex: 1 }} compact tone="lamp" label="Save" disabled={!text.trim()} onPress={submit} />
+            </View>
+          </View>
+        ) : (
+          <View style={styles.row}>
+            <LibraryButton
+              style={{ flex: 1 }}
+              compact
+              tone="ghost"
+              label="Rename"
+              icon={(c) => <PencilIcon size={16} color={c} />}
+              onPress={() => {
+                setText(place.name);
+                setMode('rename');
+              }}
+            />
+            <LibraryButton
+              style={{ flex: 1 }}
+              compact
+              tone="ghost"
+              label="+ Inside"
+              onPress={() => {
+                setText('');
+                setMode('inside');
+              }}
+            />
+            <LibraryButton compact tone="ghost" label="" accessibilityLabel={`Remove ${place.name}`} icon={(c) => <BinIcon size={18} color={c} />} onPress={remove} />
+          </View>
+        )}
+
+        {kids.length > 0 && (
+          <View style={{ gap: 6 }}>
+            <SectionLabel>Inside</SectionLabel>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingVertical: 6 }}>
+              {kids.map((k) => (
+                <SpineChip
+                  key={k.id}
+                  label={k.name}
+                  hint={(index.children.get(k.id)?.length ?? 0) > 0 ? `${index.children.get(k.id)!.length} inside` : undefined}
+                  onPress={() => router.push({ pathname: '/place/[id]', params: { id: k.id } })}
+                />
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {here.length > 0 && <SectionLabel>On this shelf</SectionLabel>}
+        {here.map((item, i) => (
+          <ItemCard key={item.id} item={item} enterIndex={i} />
+        ))}
+      </ScrollView>
+    </Room>
+  );
+}
+
+function ancestorAt(index: ReturnType<typeof useData>['index'], id: string, stepsUp: number): string | null {
+  let cur = index.byId.get(id);
+  for (let i = 0; i < stepsUp && cur; i++) cur = cur.parentId ? index.byId.get(cur.parentId) : undefined;
+  return cur?.id ?? null;
+}
+
+const styles = StyleSheet.create({
+  center: { alignItems: 'center', justifyContent: 'center' },
+  crumbs: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' },
+  crumb: { flexDirection: 'row', alignItems: 'center' },
+  row: { flexDirection: 'row', gap: 10 },
+});
