@@ -188,3 +188,13 @@ export function ArchiveBoxIcon({ size = 24, color, accent, strokeWidth = 1.6 }: 
     </Svg>
   );
 }
+
+/** A brass desk bell. */
+export function BellIcon({ size = 24, color, accent, strokeWidth = 1.6 }: IconProps) {
+  return (
+    <Svg {...base(size)}>
+      <Path d="M4 17a8 8 0 0 1 16 0z" stroke={color} strokeWidth={strokeWidth} strokeLinejoin="round" fill={accent ?? 'none'} />
+      <Path d="M2.5 19.5h19M12 9V7M10.5 6.5h3" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+    </Svg>
+  );
+}

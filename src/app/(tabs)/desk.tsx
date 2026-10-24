@@ -1,20 +1,43 @@
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Alert, Linking, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { canSealWithBiometrics, canUseDeviceAuth, RELOCK_AFTER_MS, useAppLock } from '@/security/lock';
+import { REMINDERS_OFF_KEY } from '@/components/ReminderSync';
 import { olderThan, relativeDays, shortDate } from '@/lib/format';
+import { askForReminders, reminderPermission, type ReminderPermission } from '@/reminders/scheduler';
 import { LAST_BACKUP_KEY, useData } from '@/state/data';
 import { IndexCard, LibraryButton, Room, SectionLabel, T } from '@/ui/components';
-import { ArchiveBoxIcon, KeyholeIcon } from '@/ui/icons';
+import { ArchiveBoxIcon, BellIcon, KeyholeIcon } from '@/ui/icons';
 import { usePalette } from '@/ui/theme';
 
 export default function DeskScreen() {
   const p = usePalette();
   const insets = useSafeAreaInsets();
-  const { items, locations, settings } = useData();
+  const { items, locations, settings, actions } = useData();
+  const [permission, setPermission] = useState<ReminderPermission | null>(null);
+  const remindersOn = settings[REMINDERS_OFF_KEY] !== '1' && permission !== 'denied';
+
+  useEffect(() => {
+    reminderPermission().then(setPermission).catch(() => setPermission('denied'));
+  }, []);
+
+  const toggleReminders = async (on: boolean) => {
+    if (on && permission !== 'granted') {
+      const granted = permission === 'undetermined' && (await askForReminders());
+      setPermission(granted ? 'granted' : 'denied');
+      if (!granted) {
+        Alert.alert('Notifications are off', 'Allow notifications for Whereabouts in Settings to get due-date reminders.', [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => Linking.openSettings() },
+        ]);
+        return;
+      }
+    }
+    await actions.setSetting(REMINDERS_OFF_KEY, on ? '0' : '1');
+  };
   const lock = useAppLock();
   const [available, setAvailable] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
@@ -112,6 +135,33 @@ export default function DeskScreen() {
               />
             </View>
           )}
+        </IndexCard>
+
+        <IndexCard punched={false} ruled={false} style={{ paddingBottom: 16 }}>
+          <View style={styles.row}>
+            <View style={[styles.badge, { backgroundColor: p.lamp }]}>
+              <BellIcon size={22} color={p.brassLight} />
+            </View>
+            <View style={{ flex: 1, gap: 2 }}>
+              <T variant="heading">Due-date reminders</T>
+              <T variant="small">
+                {permission === 'denied'
+                  ? 'Notifications are off for Whereabouts in Settings.'
+                  : lock.enabled
+                    ? 'A nudge at 9am on the due day. While the app is locked, they don’t say what or who.'
+                    : 'A nudge at 9am on the day something is due back, and again if it’s late.'}
+              </T>
+            </View>
+            <Switch
+              value={remindersOn}
+              disabled={permission === null}
+              onValueChange={toggleReminders}
+              trackColor={{ true: p.lamp, false: p.cardEdge }}
+              thumbColor={p.scheme === 'dark' ? p.brassLight : '#FFFDF6'}
+              ios_backgroundColor={p.cardEdge}
+              accessibilityLabel="Due-date reminders"
+            />
+          </View>
         </IndexCard>
 
         <IndexCard punched={false} ruled={false} style={{ paddingBottom: 16 }}>

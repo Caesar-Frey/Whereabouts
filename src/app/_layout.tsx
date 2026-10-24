@@ -12,6 +12,7 @@ import { useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { DataGate } from '@/components/DataGate';
+import { ReminderSync } from '@/components/ReminderSync';
 import { LockGate } from '@/security/lock';
 import { DataProvider } from '@/state/data';
 import { fonts, usePalette } from '@/ui/theme';
@@ -51,6 +52,7 @@ export default function RootLayout() {
           <DataProvider>
             <DataGate>
               <ToastProvider>
+              <ReminderSync />
               <Stack
                 screenOptions={{
                   headerStyle: { backgroundColor: p.room },
