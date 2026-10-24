@@ -61,6 +61,23 @@ describe('locations', () => {
     expect((await repo.listLocations()).map((l) => l.name).sort()).toEqual(['Garage', 'Shelf']);
   });
 
+  it('keeps contents when deleting a place whose child has the same name', async () => {
+    const { repo } = await testRepo();
+    const inner = await repo.ensureLocationPath(['Garage', 'Box', 'Box']);
+    await repo.ensureLocationPath(['Garage', 'Box', 'Box', 'Bag']);
+    const id = await repo.addItem({ name: 'Glue', locationId: inner });
+    const garage = (await repo.listLocations()).find((l) => l.name === 'Garage')!;
+    const outer = (await repo.listLocations()).find((l) => l.name === 'Box' && l.parentId === garage.id)!;
+    await repo.deleteLocation(outer.id);
+
+    const index = buildLocationIndex(await repo.listLocations());
+    const [item] = await repo.listItems();
+    expect(item!.id).toBe(id);
+    expect(index.pathString(item!.locationId)).toBe('Garage › Box');
+    const bag = [...index.byId.values()].find((l) => l.name === 'Bag')!;
+    expect(index.pathString(bag.id)).toBe('Garage › Box › Bag');
+  });
+
   it('rename rejects a clash with a sibling', async () => {
     const { repo } = await testRepo();
     const a = await repo.ensureLocationPath(['Garage', 'A']);
@@ -79,6 +96,27 @@ describe('items', () => {
     expect(item!.tags.sort()).toEqual(['car', 'keys']);
     const history = await repo.itemHistory(id);
     expect(history).toEqual([expect.objectContaining({ kind: 'moved', fromPath: null, toPath: 'Kitchen › Drawer' })]);
+  });
+
+  it('creates the place path and the loan together with the item', async () => {
+    const { repo } = await testRepo();
+    const id = await repo.addItem({ name: 'Tent', placeNames: ['Garage', 'Shelf'], lendTo: { person: 'Sam', dueAt: 9 } });
+    const [item] = await repo.listItems();
+    const index = buildLocationIndex(await repo.listLocations());
+    expect(index.pathString(item!.locationId)).toBe('Garage › Shelf');
+    expect(item!.activeLoan).toMatchObject({ itemId: id, person: 'Sam', dueAt: 9 });
+  });
+
+  it('saves nothing when part of an add fails, so retrying cannot duplicate', async () => {
+    const { repo } = await testRepo();
+    await expect(
+      repo.addItem({ name: 'Tent', placeNames: ['Garage', 'x'.repeat(500)] }),
+    ).rejects.toThrow(/too long/);
+    await expect(repo.addItem({ name: 'Tent', placeNames: ['Garage'], lendTo: { person: '  ' } })).rejects.toThrow(
+      /Person/,
+    );
+    expect(await repo.listItems()).toEqual([]);
+    expect(await repo.listLocations()).toEqual([]);
   });
 
   it('rejects empty names', async () => {

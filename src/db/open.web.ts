@@ -18,6 +18,7 @@ export async function openEncryptedDatabase(): Promise<Db> {
     getAllAsync: (sql, params = []) => raw.getAllAsync(sql, params),
     getFirstAsync: (sql, params = []) => raw.getFirstAsync(sql, params),
     withTransactionAsync: (task) => raw.withTransactionAsync(task),
+    closeAsync: () => raw.closeAsync(),
   };
   await migrate(db);
   await seedDemo(db);

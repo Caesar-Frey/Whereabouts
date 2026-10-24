@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 
 import { openEncryptedDatabase } from '../db/open';
 import { createRepo, type Repo } from '../db/repo';
-import type { Item, Location } from '../db/types';
+import type { Db, Item, Location } from '../db/types';
 import { buildLocationIndex, parsePathInput, type LocationIndex } from '../lib/locations';
 
 export interface Snapshot {
@@ -43,18 +43,13 @@ function makeActions(repo: Repo, refresh: () => Promise<void>) {
 
   return {
     addItem: run(
-      async (input: {
+      (input: {
         name: string;
         place: string;
         notes?: string;
         tags?: string[];
         lendTo?: { person: string; dueAt: number | null };
-      }) => {
-        const locationId = await placeFromPath(input.place);
-        const id = await repo.addItem({ name: input.name, locationId, notes: input.notes, tags: input.tags });
-        if (input.lendTo) await repo.lendItem(id, input.lendTo);
-        return id;
-      },
+      }) => repo.addItem({ ...input, placeNames: parsePathInput(input.place) }),
     ),
     updateItem: run(repo.updateItem),
     moveItem: run(async (id: string, place: string | { locationId: string | null }) => {
@@ -92,8 +87,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
+    let db: Db | null = null;
     (async () => {
-      const db = await openEncryptedDatabase();
+      const handle = await openEncryptedDatabase();
+      if (cancelled) {
+        await handle.closeAsync().catch(() => {});
+        return;
+      }
+      db = handle;
       const opened = createRepo(db, { now: Date.now, uuid: Crypto.randomUUID });
       const first = await loadSnapshot(opened);
       if (cancelled) return;
@@ -103,8 +104,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     })().catch((e: unknown) => {
       if (!cancelled) setStatus({ state: 'error', error: e instanceof Error ? e : new Error(String(e)) });
     });
+    // The provider unmounts whenever the app lock closes; don't leave the
+    // decrypted connection open behind the lock screen.
     return () => {
       cancelled = true;
+      db?.closeAsync().catch(() => {});
     };
   }, [attempt]);
 

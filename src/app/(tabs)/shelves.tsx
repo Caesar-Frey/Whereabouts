@@ -52,7 +52,7 @@ export default function ShelvesScreen() {
 
         {roots.length === 0 && !adding && (
           <View style={styles.empty}>
-            <Stamp text="Unshelved" sub="no places yet" color={p.leather} />
+            <Stamp text="Unshelved" sub="no places yet" color={p.leatherText} />
             <T variant="italic" color={p.inkSoft} style={{ textAlign: 'center' }}>
               Places appear here as you add things, nested however you like: House › Garage › Blue box.
             </T>

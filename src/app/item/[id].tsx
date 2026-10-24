@@ -50,13 +50,21 @@ export default function ItemScreen() {
     setStamp((s) => ({ text, sub, color, key: (s?.key ?? 0) + 1 }));
 
   const moveTo = async (locationId: string) => {
-    if (await actions.moveItem(item.id, { locationId })) flash('Re-shelved', p.lamp, index.byId.get(locationId)?.name);
+    try {
+      if (await actions.moveItem(item.id, { locationId })) flash('Re-shelved', p.lampText, index.byId.get(locationId)?.name);
+    } catch (e) {
+      showError(e);
+    }
   };
 
   const markReturned = async () => {
-    await actions.returnItem(item.id);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    flash('Returned', p.stampReturned, todayStamp());
+    try {
+      await actions.returnItem(item.id);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      flash('Returned', p.stampReturned, todayStamp());
+    } catch (e) {
+      showError(e);
+    }
   };
 
   const withdraw = () =>
@@ -67,7 +75,7 @@ export default function ItemScreen() {
         style: 'destructive',
         onPress: async () => {
           router.back();
-          await actions.deleteItem(item.id);
+          await actions.deleteItem(item.id).catch(showError);
         },
       },
     ]);
@@ -79,7 +87,7 @@ export default function ItemScreen() {
           title: '',
           headerRight: () => (
             <Pressable accessibilityLabel="Edit card" hitSlop={12} onPress={() => setEditing((e) => !e)}>
-              <PencilIcon size={22} color={p.scheme === 'dark' ? p.brass : p.leather} />
+              <PencilIcon size={22} color={p.scheme === 'dark' ? p.brass : p.leatherText} />
             </Pressable>
           ),
         }}
@@ -111,7 +119,7 @@ export default function ItemScreen() {
                     <Stamp
                       text={due === 'overdue' ? 'Overdue' : 'Checked out'}
                       sub={loan.dueAt ? `Due ${stampDate(loan.dueAt)}` : `to ${loan.person}`}
-                      color={due === 'overdue' ? p.stamp : p.leather}
+                      color={due === 'overdue' ? p.stamp : p.leatherText}
                       animate={false}
                     />
                     <T variant="body">
@@ -214,6 +222,9 @@ export default function ItemScreen() {
 
 const todayStamp = () => stampDate(Date.now());
 
+const showError = (e: unknown) =>
+  Alert.alert("That didn't save", e instanceof Error ? e.message : String(e));
+
 function EditFields({
   initial,
   onDone,
@@ -270,7 +281,7 @@ function DateDueSlip({ history }: { history: HistoryEvent[] }) {
 function eventColor(h: HistoryEvent, p: ReturnType<typeof usePalette>) {
   if (h.kind === 'lent') return p.stamp;
   if (h.kind === 'returned') return p.stampReturned;
-  return p.scheme === 'dark' ? p.stampReturned : p.lamp;
+  return p.lampText;
 }
 
 function describe(h: HistoryEvent): string {

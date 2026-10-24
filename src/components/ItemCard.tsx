@@ -27,8 +27,8 @@ export const ItemCard = memo(function ItemCard({ item, enterIndex }: { item: Ite
           {callNumber(path)}
         </T>
         {loan ? (
-          <View style={[styles.out, { borderColor: due === 'overdue' ? p.stamp : p.leather }]}>
-            <T variant="label" color={due === 'overdue' ? p.stamp : p.leather}>
+          <View style={[styles.out, { borderColor: due === 'overdue' ? p.stamp : p.leatherText }]}>
+            <T variant="label" color={due === 'overdue' ? p.stamp : p.leatherText}>
               {due === 'overdue' ? 'Overdue' : 'Out'}
             </T>
           </View>

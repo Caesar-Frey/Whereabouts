@@ -22,10 +22,14 @@ export interface Palette {
   inkFaint: string;
   leather: string;
   leatherDeep: string;
+  /** Leather red that stays readable as text on cards in both schemes. */
+  leatherText: string;
   onLeather: string;
   lamp: string;
   lampDeep: string;
   onLamp: string;
+  /** Lamp green that stays readable as text on cards in both schemes. */
+  lampText: string;
   brass: string;
   brassLight: string;
   brassDark: string;
@@ -41,16 +45,18 @@ const light: Palette = {
   card: '#FBF6EA',
   cardEdge: '#E3D6BA',
   rule: 'rgba(86, 128, 170, 0.20)',
-  headRule: '#C4574C',
+  headRule: '#B04A40',
   ink: '#2A1F17',
   inkSoft: '#6B5843',
-  inkFaint: '#A08D74',
+  inkFaint: '#7E6A54',
   leather: '#6E2620',
   leatherDeep: '#4F1915',
+  leatherText: '#6E2620',
   onLeather: '#F6E7CF',
   lamp: '#2E4B3B',
   lampDeep: '#1F3529',
   onLamp: '#EFE6CF',
+  lampText: '#2E4B3B',
   brass: '#B38B4D',
   brassLight: '#E2C58E',
   brassDark: '#7C5D2C',
@@ -66,20 +72,22 @@ const dark: Palette = {
   card: '#261C15',
   cardEdge: '#3A2C21',
   rule: 'rgba(140, 170, 200, 0.10)',
-  headRule: '#A3463D',
+  headRule: '#D06B5F',
   ink: '#EDE1CA',
   inkSoft: '#B7A588',
-  inkFaint: '#7D6C57',
+  inkFaint: '#9A8770',
   leather: '#7D2E27',
   leatherDeep: '#5A1E19',
+  leatherText: '#D4806F',
   onLeather: '#F6E7CF',
   lamp: '#3F6650',
   lampDeep: '#2A4535',
   onLamp: '#F1E9D3',
+  lampText: '#7DB394',
   brass: '#C59C5A',
   brassLight: '#E9CF9B',
   brassDark: '#8A6935',
-  stamp: '#D2564B',
+  stamp: '#E37468',
   stampReturned: '#6FA584',
   shadow: '#000000',
 };

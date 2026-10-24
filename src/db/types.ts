@@ -10,6 +10,7 @@ export interface Db {
   getAllAsync<T>(sql: string, params?: SqlValue[]): Promise<T[]>;
   getFirstAsync<T>(sql: string, params?: SqlValue[]): Promise<T | null>;
   withTransactionAsync(task: () => Promise<void>): Promise<void>;
+  closeAsync(): Promise<void>;
 }
 
 export interface Location {

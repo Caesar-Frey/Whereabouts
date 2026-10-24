@@ -32,6 +32,7 @@ function adapt(db: SQLite.SQLiteDatabase): Db {
     getAllAsync: (sql, params = []) => db.getAllAsync(sql, params),
     getFirstAsync: (sql, params = []) => db.getFirstAsync(sql, params),
     withTransactionAsync: (task) => db.withTransactionAsync(task),
+    closeAsync: () => db.closeAsync(),
   };
 }
 
@@ -46,15 +47,22 @@ export async function openEncryptedDatabase(): Promise<Db> {
   if (!/^[0-9a-f]{64}$/.test(key)) throw new DatabaseUnreadableError(new Error('Malformed key'));
 
   const raw = await SQLite.openDatabaseAsync(DB_NAME);
-  try {
-    // Must be the first statement on the connection. A raw hex key skips
-    // SQLCipher's passphrase derivation since it's already random.
-    await raw.execAsync(`PRAGMA key = "x'${key}'";`);
-    const cipher = await raw.getFirstAsync<{ cipher_version: string }>('PRAGMA cipher_version');
-    if (!cipher?.cipher_version) {
-      if (!__DEV__) throw new Error('SQLCipher is not available in this build');
-      console.warn('[whereabouts] SQLCipher missing: data is NOT encrypted (dev build only).');
+  // Must be the first statement on the connection. A raw hex key skips
+  // SQLCipher's passphrase derivation since it's already random.
+  await raw.execAsync(`PRAGMA key = "x'${key}'";`);
+
+  // A build without SQLCipher is a packaging bug, not a lost key: it must not
+  // be reported as "unreadable", which would offer to erase the user's data.
+  const cipher = await raw.getFirstAsync<{ cipher_version: string }>('PRAGMA cipher_version');
+  if (!cipher?.cipher_version) {
+    if (!__DEV__) {
+      await raw.closeAsync().catch(() => {});
+      throw new Error('This build of Whereabouts cannot encrypt data. Please update the app.');
     }
+    console.warn('[whereabouts] SQLCipher missing: data is NOT encrypted (dev build only).');
+  }
+
+  try {
     // Fails with "file is not a database" if the key doesn't match.
     await raw.getFirstAsync('SELECT count(*) FROM sqlite_master');
   } catch (e) {
@@ -73,6 +81,8 @@ export async function openEncryptedDatabase(): Promise<Db> {
 
 /** Permanently erases all data and the key. Used to recover from a lost key. */
 export async function eraseAllData(): Promise<void> {
-  await SQLite.deleteDatabaseAsync(DB_NAME).catch(() => {});
+  // If the file can't be removed, keep the key: a fresh key would only meet
+  // the same unreadable file again.
+  await SQLite.deleteDatabaseAsync(DB_NAME);
   await SecureStore.deleteItemAsync(KEY_NAME, KEY_OPTIONS);
 }

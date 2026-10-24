@@ -1,4 +1,5 @@
 import * as LocalAuthentication from 'expo-local-authentication';
+import * as ScreenCapture from 'expo-screen-capture';
 import * as SecureStore from 'expo-secure-store';
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppState, Platform, StyleSheet, View } from 'react-native';
@@ -22,6 +23,21 @@ export async function canUseDeviceAuth(): Promise<boolean> {
     LocalAuthentication.getEnrolledLevelAsync(),
   ]);
   return hardware && enrolled !== LocalAuthentication.SecurityLevel.NONE;
+}
+
+/**
+ * The JS cover below can render after the OS has already taken its
+ * app-switcher snapshot, so ask the OS itself to hide the app: FLAG_SECURE on
+ * Android (blank recents preview), a native blur overlay on iOS.
+ */
+async function setNativePrivacy(on: boolean): Promise<void> {
+  if (Platform.OS === 'android') {
+    if (on) await ScreenCapture.preventScreenCaptureAsync('app-lock');
+    else await ScreenCapture.allowScreenCaptureAsync('app-lock');
+  } else if (Platform.OS === 'ios') {
+    if (on) await ScreenCapture.enableAppSwitcherProtectionAsync(1);
+    else await ScreenCapture.disableAppSwitcherProtectionAsync();
+  }
 }
 
 async function authenticate(prompt: string): Promise<boolean> {
@@ -105,6 +121,11 @@ export function LockGate({ children }: { children: ReactNode }) {
     });
     return () => sub.remove();
   }, [unlock]);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    setNativePrivacy(enabled).catch(() => {});
+  }, [enabled]);
 
   const setEnabled = useCallback(async (on: boolean) => {
     if (on && !(await canUseDeviceAuth())) return false;

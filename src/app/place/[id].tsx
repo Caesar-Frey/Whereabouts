@@ -63,7 +63,9 @@ export default function PlaceScreen() {
           style: 'destructive',
           onPress: async () => {
             router.back();
-            await actions.deletePlace(id);
+            await actions
+              .deletePlace(id)
+              .catch((e: unknown) => Alert.alert("Couldn't remove it", e instanceof Error ? e.message : String(e)));
           },
         },
       ],
@@ -88,7 +90,7 @@ export default function PlaceScreen() {
                     disabled={last || !ancestorId}
                     onPress={() => ancestorId && router.push({ pathname: '/place/[id]', params: { id: ancestorId } })}
                   >
-                    <T variant="typed" color={last ? p.ink : p.leather}>
+                    <T variant="typed" color={last ? p.ink : p.leatherText}>
                       {n}
                     </T>
                   </Pressable>

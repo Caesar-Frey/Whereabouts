@@ -16,6 +16,7 @@ export default function AddScreen() {
   const params = useLocalSearchParams<{ name?: string; place?: string }>();
   const { actions } = useData();
   const nameRef = useRef<TextInputInstance>(null);
+  const placeRef = useRef<TextInputInstance>(null);
 
   const [name, setName] = useState(params.name ?? '');
   const [place, setPlace] = useState(params.place ?? '');
@@ -88,7 +89,9 @@ export default function AddScreen() {
                 placeholder="What is it?"
                 autoFocus={!params.name}
                 autoCapitalize="sentences"
-                returnKeyType="next"
+                returnKeyType={lent ? 'done' : 'next'}
+                submitBehavior={lent ? 'blurAndSubmit' : 'submit'}
+                onSubmitEditing={() => !lent && placeRef.current?.focus()}
                 accessibilityLabel="Name of the thing"
               />
 
@@ -100,7 +103,13 @@ export default function AddScreen() {
               {lent ? (
                 <LoanFields value={loan} onChange={setLoan} autoFocus />
               ) : (
-                <PlacePicker value={place} onChange={setPlace} autoFocus={!!params.name} onSubmit={() => save(false)} />
+                <PlacePicker
+                  inputRef={placeRef}
+                  value={place}
+                  onChange={setPlace}
+                  autoFocus={!!params.name}
+                  onSubmit={() => save(false)}
+                />
               )}
 
               {lent && (
@@ -130,7 +139,7 @@ export default function AddScreen() {
                 </View>
               ) : (
                 <Pressable onPress={() => setMore(true)} accessibilityRole="button" hitSlop={8}>
-                  <T variant="small" color={p.leather}>
+                  <T variant="small" color={p.leatherText}>
                     + Subjects and notes
                   </T>
                 </Pressable>

@@ -127,7 +127,7 @@ function EmptyLibrary() {
   const p = usePalette();
   return (
     <View style={styles.empty}>
-      <Stamp text="New library" sub="est. today" color={p.lamp} />
+      <Stamp text="New library" sub="est. today" color={p.lampText} />
       <T variant="heading" style={{ textAlign: 'center' }}>
         Your shelves are bare
       </T>
